@@ -2,7 +2,7 @@
 -- Supabase ダッシュボード → SQL Editor に全部貼りつけて Run するだけ
 -- BANのやり方: dm_accounts テーブルの banned 列を true にするだけ
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 -- ---- アカウント ----
 create table if not exists public.dm_accounts (
@@ -31,7 +31,7 @@ revoke all on public.dm_sessions from anon, authenticated;
 -- ---- ログイン ----
 create or replace function public.dm_login(p_user text, p_pass text)
 returns jsonb
-language plpgsql security definer set search_path = public
+language plpgsql security definer set search_path = public, extensions
 as $$
 declare
   v_acc dm_accounts%rowtype;
@@ -55,7 +55,7 @@ end $$;
 -- ---- 新規登録 ----
 create or replace function public.dm_register(p_user text, p_pass text)
 returns jsonb
-language plpgsql security definer set search_path = public
+language plpgsql security definer set search_path = public, extensions
 as $$
 begin
   p_user := trim(coalesce(p_user, ''));
@@ -77,7 +77,7 @@ end $$;
 -- ---- 生存確認 (BAN/セッション切れチェック) ----
 create or replace function public.dm_check(p_token uuid)
 returns jsonb
-language plpgsql security definer set search_path = public
+language plpgsql security definer set search_path = public, extensions
 as $$
 declare
   v_banned boolean;
@@ -100,7 +100,7 @@ end $$;
 -- ---- セーブ ----
 create or replace function public.dm_save(p_token uuid, p_save text)
 returns jsonb
-language plpgsql security definer set search_path = public
+language plpgsql security definer set search_path = public, extensions
 as $$
 declare
   v_id uuid;
@@ -125,7 +125,7 @@ end $$;
 -- ---- ログアウト ----
 create or replace function public.dm_logout(p_token uuid)
 returns jsonb
-language plpgsql security definer set search_path = public
+language plpgsql security definer set search_path = public, extensions
 as $$
 begin
   delete from dm_sessions where token = p_token;
