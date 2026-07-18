@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>デッキと慈悲(仮)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { background: #0a0612; color: #fff; font-family: "Courier New", monospace; }
+  #wrap { max-width: 420px; margin: 0 auto; padding: 10px; }
+  #hud { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 2px 8px; color: #cfc7e8; }
+  canvas { width: 100%; display: block; image-rendering: pixelated; border-radius: 8px; background: #000; touch-action: manipulation; }
+  #dlg { margin-top: 10px; min-height: 52px; background: #000; border: 2px solid #fff; border-radius: 4px; padding: 8px 12px; font-size: 13px; line-height: 1.7; white-space: pre-line; }
+  #hand, #shop { display: none; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; }
+  #shop { grid-template-columns: 1fr; }
+  button { font-family: inherit; font-size: 12px; line-height: 1.5; padding: 10px 4px; background: #1a1130; color: #fff; border: 2px solid #fff; border-radius: 6px; }
+  button:active { background: #3b2a63; }
+  button .sub { font-size: 11px; color: #9c92c4; }
+  #runrow { display: none; margin-top: 8px; }
+  #runrow button { width: 100%; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <span id="hudL">LV 1  ATK +0</span>
+    <span id="hudR">HP 20/20  ⛃0  EXP 0/10</span>
+  </div>
+  <canvas id="map" width="192" height="320"></canvas>
+  <canvas id="bt" width="192" height="290" style="display:none"></canvas>
+  <div id="dlg">* タップした ばしょへ あるくよ。</div>
+  <div id="hand"></div>
+  <div id="runrow"><button id="runBtn">にげる</button></div>
+  <div id="shop"></div>
+</div>
+<script>
+const mapCv = document.getElementById('map'), mcx = mapCv.getContext('2d');
+const btCv = document.getElementById('bt'), bcx = btCv.getContext('2d');
+const dlg = document.getElementById('dlg'), hand = document.getElementById('hand');
+const shop = document.getElementById('shop'), runrow = document.getElementById('runrow');
+const hudL = document.getElementById('hudL'), hudR = document.getElementById('hudR');
+const T = 16, COLS = 12, ROWS = 20;
+const rows = [
+"############",
+"#P.....#...#",
+"#.###..#.E.#",
+"#.#....#...#",
+"#.#..###..##",
+"#....#.....#",
+"###..#..#..#",
+"#.....#.#.E#",
+"#.###.#.#..#",
+"#.#...#.##.#",
+"#.#.E.#..#.#",
+"#.#####..#.#",
+"#....*...#.#",
+"####.#####.#",
+"#..#.#...#.#",
+"#S.#.#.#...#",
+"#..#...#.###",
+"#.######...#",
+"#........B.#",
+"############"];
+
+let S = { lv: 1, exp: 0, coins: 0, hp: 20, maxhp: 20, ups: [0, 0, 0], cleared: [] };
+try {
+  const sv = localStorage.getItem('deck-mercy-save');
+  if (sv) S = Object.assign(S, JSON.parse(sv));
+} catch (e) {}
+
+const grid = rows.map(r => r.split(''));
+grid[1][1] = '.';
+S.cleared.forEach(k => { const [x, y] = k.split(',').map(Number); grid[y][x] = '.'; });
+
+const cards = [
+  { name: 'スラッシュ', base: 8, spd: 2.2, sweet: [0.5, 0.5], col: '#f5f2e9', desc: 'まんなかが つよい' },
+  { name: 'メテオ', base: 14, spd: 3.6, sweet: [0.5, 0.5], col: '#f09f5b', desc: 'はやいけど ばかぢから' },
+  { name: 'トリック', base: 11, spd: 1.8, sweet: [0.8, 0.2], col: '#afa9ec', desc: 'みぎうえが きゅうしょ' }
+];
+
+let mode = 'map';
+let px = 1, py = 1, drawX = 1, drawY = 1, path = [], segFrom = null, segTo = null, segT = 0;
+let battle = null;
+const BX = 26, BY = 84, BW = 140, BH = 140;
+
+function say(t) { dlg.textContent = t; }
+function needExp() { return S.lv * 10; }
+function hud() {
+  hudL.textContent = 'LV ' + S.lv + '  ATK +' + (S.lv - 1);
+  hudR.textContent = 'HP ' + S.hp + '/' + S.maxhp + '  ⛃' + S.coins + '  EXP ' + S.exp + '/' + needExp();
+}
+function save() {
+  try { localStorage.setItem('deck-mercy-save', JSON.stringify(S)); } catch (e) {}
+}
+function gainExp(n) {
+  S.exp += n;
+  while (S.exp >= needExp()) { S.exp -= needExp(); S.lv++; say(dlg.textContent + '\n* LVが ' + S.lv + ' に あがった! こうげき+1'); }
+}
+
+function walkable(x, y) { return x >= 0 && y >= 0 && x < COLS && y < ROWS && grid[y][x] !== '#'; }
+function bfs(sx, sy, tx, ty) {
+  if (!walkable(tx, ty)) return null;
+  const prev = {}, q = [[sx, sy]], seen = new Set([sx + ',' + sy]);
+  while (q.length) {
+    const [x, y] = q.shift();
+    if (x === tx && y === ty) {
+      const p = []; let k = tx + ',' + ty;
+      while (k !== sx + ',' + sy) { const [a, b] = k.split(',').map(Number); p.unshift([a, b]); k = prev[k]; }
+      return p;
+    }
+    for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+      const nx = x + dx, ny = y + dy, key = nx + ',' + ny;
+      if (walkable(nx, ny) && !seen.has(key)) { seen.add(key); prev[key] = x + ',' + y; q.push([nx, ny]); }
+    }
+  }
+  return null;
+}
+
+mapCv.addEventListener('click', e => {
+  if (mode !== 'map' || shop.style.display === 'grid') return;
+  const r = mapCv.getBoundingClientRect();
+  const tx = Math.floor((e.clientX - r.left) / r.width * COLS);
+  const ty = Math.floor((e.clientY - r.top) / r.height * ROWS);
+  const p = bfs(px, py, tx, ty);
+  if (!p) { say('* そっちには いけないみたい。'); return; }
+  path = p; say('* ...');
+});
+
+function arrive() {
+  const c = grid[py][px];
+  if (c === 'E') startBattle(false);
+  else if (c === 'B') startBattle(true);
+  else if (c === 'S') openShop();
+  else if (c === '*') { S.hp = S.maxhp; save(); say('* ほしの ひかりで かいふくした。\n* ぼうけんを セーブした。'); hud(); }
+}
+
+function openShop() {
+  say('* 「いらっしゃい。カードを きたえて いくかい?」');
+  shop.style.display = 'grid';
+  shop.innerHTML = '';
+  cards.forEach((c, i) => {
+    const cost = 30 + S.ups[i] * 20;
+    const b = document.createElement('button');
+    b.innerHTML = c.name + ' を きたえる +2  <span class="sub">(⛃' + cost + ' / いま きほん' + (c.base + S.ups[i] * 2) + ')</span>';
+    b.addEventListener('click', () => {
+      if (S.coins < cost) { say('* 「コインが たりないよ」'); return; }
+      S.coins -= cost; S.ups[i]++;
+      say('* ' + c.name + ' が つよくなった!'); hud(); save(); openShop();
+    });
+    shop.appendChild(b);
+  });
+  const close = document.createElement('button');
+  close.textContent = 'みせを でる';
+  close.addEventListener('click', () => { shop.style.display = 'none'; say('* 「また おいで」'); });
+  shop.appendChild(close);
+}
+
+function startBattle(isBoss) {
+  mode = 'battle';
+  mapCv.style.display = 'none'; btCv.style.display = 'block';
+  hand.style.display = 'grid'; runrow.style.display = isBoss ? 'none' : 'block';
+  battle = {
+    boss: isBoss,
+    name: isBoss ? 'ボスカード' : 'ザコカード',
+    maxhp: isBoss ? 120 : 60, ehp: isBoss ? 120 : 60,
+    atkMin: isBoss ? 4 : 2, atkMax: isBoss ? 7 : 4,
+    coin: isBoss ? 100 : 20, exp: isBoss ? 30 : 8,
+    state: 'idle', card: null, vx: BX, vdir: 1, hy: BY, hdir: 1,
+    lockX: -1, lockY: -1, shake: 0, flash: 0, hitPt: null, dmgTxt: '', dmgT: 0
+  };
+  say(isBoss ? '* ボスカードが たちふさがった!\n(にげられない…!)' : '* モンスターが たちふさがった!');
+}
+
+function endBattle(win) {
+  if (win) {
+    grid[py][px] = '.';
+    S.cleared.push(px + ',' + py);
+    say('* しょうり! ⛃' + battle.coin + ' と EXP' + battle.exp + ' を てにいれた。');
+    S.coins += battle.coin;
+    gainExp(battle.exp);
+    if (battle.boss) say(dlg.textContent + '\n* すべての たたかいが おわった…!');
+    save();
+  }
+  hud();
+  mode = 'map';
+  battle = null;
+  btCv.style.display = 'none'; mapCv.style.display = 'block';
+  hand.style.display = 'none'; runrow.style.display = 'none';
+}
+
+function gameOver() {
+  say('* たおれてしまった…\n* はじめの ばしょに もどされた。');
+  S.hp = S.maxhp;
+  px = 1; py = 1; drawX = 1; drawY = 1; path = []; segFrom = null;
+  hud();
+  mode = 'map';
+  battle = null;
+  btCv.style.display = 'none'; mapCv.style.display = 'block';
+  hand.style.display = 'none'; runrow.style.display = 'none';
+}
+
+cards.forEach((c, i) => {
+  const b = document.createElement('button');
+  b.innerHTML = c.name + '<br><span class="sub">' + c.desc + '</span>';
+  b.addEventListener('click', () => {
+    if (!battle || battle.state !== 'idle') return;
+    battle.card = c; battle.cardIdx = i;
+    battle.lockX = -1; battle.lockY = -1;
+    battle.vx = BX; battle.vdir = 1; battle.hy = BY; battle.hdir = 1;
+    battle.state = 'vert';
+    say('* タップで たてバーを とめろ!');
+  });
+  hand.appendChild(b);
+});
+
+document.getElementById('runBtn').addEventListener('click', () => {
+  if (!battle || battle.state !== 'idle') return;
+  say('* うまく にげきれた!');
+  const keep = dlg.textContent;
+  endBattle(false);
+  say(keep);
+});
+
+btCv.addEventListener('click', () => {
+  if (!battle) return;
+  if (battle.state === 'vert') { battle.lockX = battle.vx; battle.state = 'horiz'; say('* つぎは よこバー!'); }
+  else if (battle.state === 'horiz') { battle.lockY = battle.hy; resolveHit(); }
+});
+
+function resolveHit() {
+  const b = battle;
+  b.state = 'result';
+  const sx = BX + b.card.sweet[0] * BW, sy = BY + b.card.sweet[1] * BH;
+  const d = Math.hypot(b.lockX - sx, b.lockY - sy);
+  let mult, label;
+  if (d < 13) { mult = 1.5; label = 'ジャスト!!'; }
+  else if (d < 32) { mult = 1.0; label = 'ヒット!'; }
+  else if (d < 62) { mult = 0.6; label = 'かすった…'; }
+  else { mult = 0.25; label = 'とおい…'; }
+  const atk = b.card.base + S.ups[b.cardIdx] * 2 + (S.lv - 1);
+  const dmg = Math.max(1, Math.round(atk * mult));
+  b.ehp = Math.max(0, b.ehp - dmg);
+  b.hitPt = [b.lockX, b.lockY]; b.shake = 10; b.flash = 8; b.dmgTxt = '' + dmg; b.dmgT = 40;
+  say('* ' + label + ' ' + dmg + ' ダメージ!');
+  setTimeout(() => {
+    if (!battle) return;
+    if (b.ehp <= 0) { endBattle(true); return; }
+    const ed = b.atkMin + Math.floor(Math.random() * (b.atkMax - b.atkMin + 1));
+    S.hp = Math.max(0, S.hp - ed);
+    hud();
+    say('* はんげき! ' + ed + ' ダメージ うけた…');
+    if (S.hp <= 0) { setTimeout(gameOver, 700); return; }
+    b.state = 'idle';
+  }, 900);
+}
+
+function drawMap() {
+  mcx.fillStyle = '#120b20'; mcx.fillRect(0, 0, 192, 320);
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    const c = grid[y][x], X = x * T, Y = y * T;
+    if (c === '#') {
+      mcx.fillStyle = '#241640'; mcx.fillRect(X, Y, T, T);
+      mcx.fillStyle = '#3b2a63'; mcx.fillRect(X, Y, T, 3);
+      mcx.fillStyle = '#180e2e'; mcx.fillRect(X, Y + T - 2, T, 2);
+    } else {
+      mcx.fillStyle = (x + y) % 2 ? '#1c1233' : '#1e1436'; mcx.fillRect(X, Y, T, T);
+      if ((x * 7 + y * 13) % 11 === 0) { mcx.fillStyle = '#291b47'; mcx.fillRect(X + 6, Y + 9, 2, 2); }
+    }
+    if (c === 'E') {
+      mcx.fillStyle = '#e24b4a'; mcx.fillRect(X + 4, Y + 5, 8, 7);
+      mcx.fillRect(X + 3, Y + 12, 2, 2); mcx.fillRect(X + 7, Y + 12, 2, 2); mcx.fillRect(X + 11, Y + 12, 2, 2);
+      mcx.fillStyle = '#fff'; mcx.fillRect(X + 6, Y + 7, 2, 2); mcx.fillRect(X + 9, Y + 7, 2, 2);
+    } else if (c === 'S') {
+      mcx.fillStyle = '#efa227'; mcx.fillRect(X + 3, Y + 6, 10, 8);
+      mcx.fillStyle = '#854f0b'; mcx.fillRect(X + 3, Y + 4, 10, 2); mcx.fillRect(X + 7, Y + 8, 2, 6);
+    } else if (c === '*') {
+      mcx.fillStyle = '#ffe97a'; mcx.fillRect(X + 7, Y + 4, 2, 8); mcx.fillRect(X + 4, Y + 7, 8, 2);
+      mcx.fillRect(X + 5, Y + 5, 2, 2); mcx.fillRect(X + 9, Y + 9, 2, 2);
+    } else if (c === 'B') {
+      mcx.fillStyle = '#7f77dd'; mcx.fillRect(X + 3, Y + 4, 10, 10);
+      mcx.fillStyle = '#26215c'; mcx.fillRect(X + 5, Y + 7, 2, 3); mcx.fillRect(X + 9, Y + 7, 2, 3);
+      mcx.fillStyle = '#534ab7'; mcx.fillRect(X + 3, Y + 2, 2, 2); mcx.fillRect(X + 11, Y + 2, 2, 2);
+    }
+  }
+  const X = drawX * T, Y = drawY * T;
+  mcx.fillStyle = '#f5f2e9'; mcx.fillRect(X + 4, Y + 2, 8, 12);
+  mcx.fillStyle = '#d85a30'; mcx.fillRect(X + 4, Y + 2, 8, 2);
+  mcx.fillStyle = '#26215c'; mcx.fillRect(X + 6, Y + 6, 1, 2); mcx.fillRect(X + 9, Y + 6, 1, 2);
+  mcx.fillRect(X + 6, Y + 10, 4, 1);
+}
+
+function drawBattle() {
+  const b = battle;
+  bcx.fillStyle = '#000'; bcx.fillRect(0, 0, 192, 290);
+  const ox = 96 + (b.shake > 0 ? (b.shake % 2 ? -3 : 3) : 0);
+  if (b.shake > 0) b.shake--;
+  const bodyCol = b.flash > 0 ? '#fff' : (b.boss ? '#7f77dd' : '#e24b4a');
+  if (b.flash > 0) b.flash--;
+  bcx.fillStyle = bodyCol;
+  bcx.fillRect(ox - 16, 14, 32, 26);
+  bcx.fillRect(ox - 20, 40, 6, 6); bcx.fillRect(ox - 3, 40, 6, 6); bcx.fillRect(ox + 14, 40, 6, 6);
+  if (b.boss) { bcx.fillRect(ox - 20, 8, 6, 6); bcx.fillRect(ox + 14, 8, 6, 6); }
+  bcx.fillStyle = '#000'; bcx.fillRect(ox - 9, 22, 6, 6); bcx.fillRect(ox + 3, 22, 6, 6);
+  bcx.fillStyle = '#4a1b0c'; bcx.fillRect(BX, 54, BW, 6);
+  bcx.fillStyle = '#97c459'; bcx.fillRect(BX, 54, BW * b.ehp / b.maxhp, 6);
+  bcx.fillStyle = '#fff'; bcx.font = '8px monospace';
+  bcx.fillText(b.name + '  HP ' + b.ehp + '/' + b.maxhp, BX, 50);
+  bcx.strokeStyle = '#fff'; bcx.lineWidth = 2; bcx.strokeRect(BX, BY, BW, BH);
+  if (b.card && (b.state === 'vert' || b.state === 'horiz')) {
+    const sx = BX + b.card.sweet[0] * BW, sy = BY + b.card.sweet[1] * BH;
+    bcx.fillStyle = 'rgba(255,233,122,0.16)';
+    bcx.beginPath(); bcx.arc(sx, sy, 30, 0, 7); bcx.fill();
+    bcx.fillStyle = 'rgba(255,233,122,0.28)';
+    bcx.beginPath(); bcx.arc(sx, sy, 13, 0, 7); bcx.fill();
+  }
+  if (b.state === 'vert') {
+    b.vx += b.vdir * b.card.spd;
+    if (b.vx > BX + BW) { b.vx = BX + BW; b.vdir = -1; } if (b.vx < BX) { b.vx = BX; b.vdir = 1; }
+    bcx.strokeStyle = b.card.col; bcx.beginPath(); bcx.moveTo(b.vx, BY); bcx.lineTo(b.vx, BY + BH); bcx.stroke();
+  }
+  if (b.state === 'horiz') {
+    bcx.strokeStyle = 'rgba(255,255,255,0.4)'; bcx.beginPath(); bcx.moveTo(b.lockX, BY); bcx.lineTo(b.lockX, BY + BH); bcx.stroke();
+    b.hy += b.hdir * b.card.spd;
+    if (b.hy > BY + BH) { b.hy = BY + BH; b.hdir = -1; } if (b.hy < BY) { b.hy = BY; b.hdir = 1; }
+    bcx.strokeStyle = b.card.col; bcx.beginPath(); bcx.moveTo(BX, b.hy); bcx.lineTo(BX + BW, b.hy); bcx.stroke();
+  }
+  if (b.hitPt && b.dmgT > 0) {
+    b.dmgT--;
+    bcx.fillStyle = '#ffe97a';
+    bcx.fillRect(b.hitPt[0] - 3, b.hitPt[1] - 3, 6, 6);
+    bcx.font = '12px monospace';
+    bcx.fillText(b.dmgTxt, b.hitPt[0] + 6, b.hitPt[1] - 6 - (40 - b.dmgT) * 0.3);
+  }
+  bcx.fillStyle = '#fff'; bcx.font = '8px monospace';
+  bcx.fillText('きみ  HP ' + S.hp + '/' + S.maxhp, BX, BY + BH + 16);
+  bcx.fillStyle = '#4a1b0c'; bcx.fillRect(BX, BY + BH + 20, BW, 6);
+  bcx.fillStyle = '#f09595'; bcx.fillRect(BX, BY + BH + 20, BW * S.hp / S.maxhp, 6);
+}
+
+let last = performance.now();
+function loop(t) {
+  const dt = t - last; last = t;
+  if (mode === 'map') {
+    if (!segFrom && path.length) { segFrom = [px, py]; segTo = path.shift(); segT = 0; }
+    if (segFrom) {
+      segT += dt / 110;
+      if (segT >= 1) {
+        px = segTo[0]; py = segTo[1]; drawX = px; drawY = py;
+        segFrom = null;
+        if (!path.length) arrive();
+      } else {
+        drawX = segFrom[0] + (segTo[0] - segFrom[0]) * segT;
+        drawY = segFrom[1] + (segTo[1] - segFrom[1]) * segT;
+      }
+    }
+    drawMap();
+  } else if (battle) {
+    drawBattle();
+  }
+  requestAnimationFrame(loop);
+}
+hud();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
