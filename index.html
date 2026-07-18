@@ -35,23 +35,27 @@
   .heart { display: inline-block; width: 10px; height: 10px; background: #e24b4a; margin-right: 6px;
            clip-path: polygon(50% 100%, 0 40%, 0 15%, 25% 0, 50% 20%, 75% 0, 100% 15%, 100% 40%); }
 
-  /* ===== ゲーム画面 ===== */
-  #wrap { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
-          max-width: 420px; margin: 0 auto; padding: 10px 10px 90px; display: none; }
-  #hud { display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding: 4px 2px 8px; color: #c7dbe8; }
+  /* ===== ゲーム画面 (スマホ1画面ぴったり・スクロールなし) ===== */
+  #wrap { height: 100dvh; overflow: hidden; overscroll-behavior: contain;
+          max-width: 420px; margin: 0 auto; padding: 4px 8px calc(6px + env(safe-area-inset-bottom));
+          display: none; flex-direction: column; }
+  #wrap.on { display: flex; }
+  #cvbox { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: center; }
+  #ui { flex: 0 1 auto; max-height: 55%; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  #hud { display: flex; justify-content: space-between; align-items: center; font-size: 11px; padding: 2px 2px 4px; color: #c7dbe8; }
   #dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #97c459; margin-right: 5px;
          box-shadow: 0 0 6px #97c459; animation: tw 1.6s infinite; }
   #dot.bad { background: #e24b4a; box-shadow: 0 0 6px #e24b4a; }
   #menuBtn { font-family: inherit; font-size: 11px; padding: 4px 9px; margin-left: 8px;
              background: linear-gradient(#1d2f4d, #111a30); color: #ffe97a; border: 1px solid #ffe97a; border-radius: 5px; }
   #menuBtn:active { background: #2a4363; }
-  canvas { width: 100%; display: block; image-rendering: pixelated; border-radius: 8px; background: #000;
+  canvas { display: block; image-rendering: pixelated; border-radius: 8px; background: #000;
            touch-action: manipulation; border: 1px solid #1d2f4d; box-shadow: 0 0 20px rgba(119,180,221,.15); }
-  #dlg { margin-top: 10px; min-height: 52px; background: #000; border: 2px solid #fff; border-radius: 4px;
-         padding: 8px 12px; font-size: 13px; line-height: 1.7; white-space: pre-line; }
+  #dlg { margin-top: 6px; min-height: 40px; background: #000; border: 2px solid #fff; border-radius: 4px;
+         padding: 6px 10px; font-size: 12px; line-height: 1.5; white-space: pre-line; }
 
-  #hand { display: none; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; }
-  .card { position: relative; font-family: inherit; font-size: 12px; line-height: 1.4; padding: 9px 3px 7px;
+  #hand { display: none; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px; margin-top: 6px; }
+  .card { position: relative; font-family: inherit; font-size: 11px; line-height: 1.35; padding: 6px 2px 5px;
           background: linear-gradient(#152741, #0d1628); color: #fff; border: 2px solid #c9d4da; border-radius: 8px;
           border-top-width: 4px; }
   .card:active { transform: translateY(2px); background: #2a4363; }
@@ -62,12 +66,12 @@
                   font-size: 15px; font-weight: bold; color: #7fd4ff; background: rgba(0,0,0,.45); border-radius: 6px; }
 
   /* アイテム (協力プレイの復活など) */
-  #items { display: none; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px; }
+  #items { display: none; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px; margin-top: 5px; }
   #items .itlbl { grid-column: 1 / -1; font-size: 10px; color: #92b4c4; letter-spacing: 1px; }
   .card.item { border-color: #f7a8c4; }
   .card.item:disabled { opacity: .35; }
 
-  #menu, #mainMenu { display: none; grid-template-columns: 1fr; gap: 8px; margin-top: 10px; }
+  #menu, #mainMenu { display: none; grid-template-columns: 1fr; gap: 6px; margin-top: 6px; }
   #mainMenu { grid-template-columns: 1fr 1fr; }
   button.pbtn { font-family: inherit; font-size: 12px; line-height: 1.5; padding: 12px 4px;
           background: linear-gradient(#152741, #0d1628); color: #fff; border: 2px solid #fff; border-radius: 8px; }
@@ -77,7 +81,7 @@
   .sub { font-size: 11px; color: #92b4c4; }
 
   /* デッキ / ガチャ / マルチ */
-  #deck, #gacha, #mp { display: none; margin-top: 10px; }
+  #deck, #gacha, #mp { display: none; margin-top: 6px; }
   .dcard { border: 2px solid #c9d4da; border-left-width: 6px; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px;
            background: rgba(0,0,0,.5); font-size: 12px; line-height: 1.6; }
   .dcard .nm { font-weight: bold; font-size: 13px; }
@@ -121,21 +125,23 @@
     <span id="hudL">LV 1</span>
     <span><span id="dot"></span><span id="hudR">HP 20/20  ⛃0</span><button id="menuBtn">☰ メニュー</button></span>
   </div>
-  <canvas id="bt" width="192" height="320"></canvas>
-  <div id="dlg">* ...</div>
-  <div id="hand"></div>
-  <div id="items"></div>
-  <div id="menu"><button class="pbtn" id="fightBtn">▶ たたかう</button></div>
-  <div id="mainMenu">
-    <button class="pbtn" id="deckBtn">デッキ</button>
-    <button class="pbtn" id="gachaBtn">ガチャ</button>
-    <button class="pbtn" id="mpBtn">きょうりょくバトル</button>
-    <button class="pbtn" id="logoutBtn">ログアウト</button>
-    <button class="pbtn" id="closeMenuBtn">とじる</button>
+  <div id="cvbox"><canvas id="bt" width="192" height="320"></canvas></div>
+  <div id="ui">
+    <div id="dlg">* ...</div>
+    <div id="hand"></div>
+    <div id="items"></div>
+    <div id="menu"><button class="pbtn" id="fightBtn">▶ たたかう</button></div>
+    <div id="mainMenu">
+      <button class="pbtn" id="deckBtn">デッキ</button>
+      <button class="pbtn" id="gachaBtn">ガチャ</button>
+      <button class="pbtn" id="mpBtn">きょうりょくバトル</button>
+      <button class="pbtn" id="logoutBtn">ログアウト</button>
+      <button class="pbtn" id="closeMenuBtn">とじる</button>
+    </div>
+    <div id="deck"></div>
+    <div id="gacha"></div>
+    <div id="mp"></div>
   </div>
-  <div id="deck"></div>
-  <div id="gacha"></div>
-  <div id="mp"></div>
 </div>
 
 <script>
@@ -153,6 +159,18 @@
 })();
 
 const cv = document.getElementById('bt'), cx = cv.getContext('2d');
+
+// ---- キャンバスを あいたスペースに ぴったり合わせる (縦横比 192:320 維持) ----
+const cvbox = document.getElementById('cvbox');
+function fitCanvas() {
+  const r = cvbox.getBoundingClientRect();
+  if (r.width < 10 || r.height < 10) return;
+  const s = Math.min(r.width / 192, r.height / 320);
+  cv.style.width = Math.floor(192 * s) + 'px';
+  cv.style.height = Math.floor(320 * s) + 'px';
+}
+new ResizeObserver(fitCanvas).observe(cvbox);
+window.addEventListener('resize', fitCanvas);
 const dlg = document.getElementById('dlg'), hand = document.getElementById('hand');
 const menu = document.getElementById('menu'), mainMenu = document.getElementById('mainMenu');
 const deckEl = document.getElementById('deck'), gachaEl = document.getElementById('gacha');
@@ -220,7 +238,8 @@ async function auth(isNew) {
     token = r.token; userName = r.user;
     msg.textContent = '';
     document.getElementById('login').style.display = 'none';
-    document.getElementById('wrap').style.display = 'block';
+    document.getElementById('wrap').style.display = 'flex';
+    fitCanvas();
     initGame(r.save);
   } catch (e) {
     msg.style.color = '#f09595'; msg.textContent = '* サーバーに つながらなかった…';
@@ -248,7 +267,10 @@ const cards = [
   { name: 'メテオ',     base: 14, spd: 3.6, sweet: [0.5, 0.5], rar: 'R',  cd: 1, type: 'atk',  desc: 'はやいけど ばかぢから' },
   { name: 'トリック',   base: 11, spd: 1.8, sweet: [0.8, 0.2], rar: 'R',  cd: 1, type: 'atk',  desc: 'みぎうえが きゅうしょ' },
   { name: 'ヒール',     base: 12, spd: 2.4, sweet: [0.5, 0.5], rar: 'SR', cd: 3, type: 'heal', desc: 'HPを かいふく' },
-  { name: 'ラッシュ',   base: 10,                             rar: 'UR', cd: 4, type: 'rush', desc: '5びょう れんだ!' }
+  { name: 'ラッシュ',   base: 10,                             rar: 'UR', cd: 4, type: 'rush', desc: '5びょう れんだ!' },
+  { name: 'つらぬき',   base: 11, spd: 2.6, sweet: [0.2, 0.8], rar: 'R',  cd: 1, type: 'atk',  desc: 'ひだりしたが きゅうしょ' },
+  { name: 'うずしお',   base: 13, spd: 3.2, sweet: [0.65, 0.65], rar: 'SR', cd: 2, type: 'atk', desc: 'みぎしたの うずを ねらえ' },
+  { name: 'シールド',   base: 8,  spd: 2.4, sweet: [0.5, 0.5], rar: 'SR', cd: 3, type: 'guard', desc: 'つぎの こうげきを ガード' }
 ];
 const REVIVE_CARD = { name: 'ふっかつ', spd: 2.8, sweet: [0.5, 0.5], rar: 'SR', type: 'revive', desc: 'ジャストで あいてを ふっかつ!' };
 const MAX_CLV = 30;
@@ -344,13 +366,16 @@ function initGame(saveStr) {
   if (!S.maxhp || S.maxhp < 20) S.maxhp = 20;
   if (!S.bestProg || S.bestProg < progOf(S.world, S.wave)) S.bestProg = progOf(S.world, S.wave);
   // カードデータ移行/初期化
-  if (!Array.isArray(S.cards) || S.cards.length !== cards.length) {
+  if (!Array.isArray(S.cards)) {
     const old = Array.isArray(S.ups) ? S.ups : [0, 0, 0];
     S.cards = cards.map((c, i) => ({
       lv: Math.min(MAX_CLV, 1 + (old[i] || 0) * 2),
       cores: [null, null, null]
     }));
   }
+  // カードが増えたら育成を残したまま追加分だけ足す
+  while (S.cards.length < cards.length) S.cards.push({ lv: 1, cores: [null, null, null] });
+  S.cards.length = cards.length;
   S.cards.forEach(c => { if (!Array.isArray(c.cores) || c.cores.length !== 3) c.cores = [null, null, null]; });
   delete S.ups;
   S.hp = maxHP();
@@ -410,6 +435,7 @@ function renderDeck() {
     d.style.borderColor = r.col;
     const val = c.type === 'heal' ? 'かいふく ' + powOf(i) :
                 c.type === 'rush' ? 'れんだ いりょく ' + powOf(i) + ' (さいだい ' + powOf(i) * 3 + ')' :
+                c.type === 'guard' ? 'ガード (ジャストで 80%カット)' :
                 'ATK ' + powOf(i);
     d.innerHTML =
       '<span class="nm" style="color:' + r.col + '">' + c.name + '</span>' +
@@ -534,7 +560,7 @@ function mpJoin(code, isHost) {
       const meta = (st[names[0]][0]) || {};
       MP.p = { name: names[0], hp: meta.hp || 20, maxhp: meta.maxhp || 20, lv: meta.lv || 1,
                down: false, ready: false, defend: false, evt: '', evtT: 0, evtCol: '#fff', critT: 0 };
-      say('* ' + names[0] + ' が へやに はいってきた!\n* ふたりとも「じゅんびOK」で スタート!');
+      say('* ' + names[0] + ' が へやに はいってきた!\n* ふたりとも「たたかう」で スタート!');
       renderMp();
       if (mode === 'inter' && deckEl.style.display !== 'block' && gachaEl.style.display !== 'block') showPanel('mp');
     } else if (!names.length && MP.p) {
@@ -601,13 +627,13 @@ function renderMp() {
     if (MP.p) {
       const go = document.createElement('button');
       go.className = 'wide gold';
-      if (MP.ready) { go.textContent = 'あいてを まってる…'; go.disabled = true; go.style.opacity = 0.6; }
-      else go.textContent = '▶ じゅんびOK! (WAVE ' + (MP.isHost ? S.wave : '?') + ')';
+      if (MP.ready) { go.textContent = 'あいてが「たたかう」を おすのを まってる…'; go.disabled = true; go.style.opacity = 0.6; }
+      else go.textContent = '▶ たたかう!';
       go.addEventListener('click', mpReady);
       d.appendChild(go);
       const note = document.createElement('div');
       note.className = 'sub'; note.style.marginTop = '6px';
-      note.textContent = '※ へやぬしの WORLD/WAVE で たたかうよ';
+      note.textContent = '※ ふたりとも「たたかう」で スタート。すすみが ひくいほうの WORLD/WAVE に あわせるよ';
       d.appendChild(note);
     }
     const lv = document.createElement('button');
@@ -625,22 +651,27 @@ function renderMp() {
 function mpReady() {
   if (!MP || !MP.p || mode !== 'inter' || MP.ready) return;
   MP.ready = true;
-  mpSend('ready', {});
+  mpSend('ready', { prog: progOf(S.world, S.wave) });
   renderMp();
   if (MP.isHost && MP.p.ready) mpStart();
 }
 function mpStart() {
   if (!MP || !MP.p || mode !== 'inter') return;
+  // ふたりのうち すすみが低いほうの WORLD/WAVE に自動で合わせる
+  const p = Math.min(progOf(S.world, S.wave), MP.p.prog || progOf(S.world, S.wave));
+  const w = Math.floor((p - 1) / WAVES_PER_WORLD) + 1;
+  const v = ((p - 1) % WAVES_PER_WORLD) + 1;
+  S.world = w; S.wave = v;
   const e = makeEnemy();
-  mpSend('start', { e: e, w: S.world, v: S.wave });
-  startBattleMp(e, S.world, S.wave);
+  mpSend('start', { e: e, w: w, v: v });
+  startBattleMp(e, w, v);
 }
 
 function onMpEvt(p) {
   if (!MP) return;
   switch (p.t) {
     case 'ready':
-      if (MP.p) { MP.p.ready = true; renderMp(); if (MP.isHost && MP.ready) mpStart(); }
+      if (MP.p) { MP.p.ready = true; MP.p.prog = p.prog; renderMp(); if (MP.isHost && MP.ready) mpStart(); }
       break;
     case 'start':
       startBattleMp(p.e, p.w, p.v);
@@ -853,7 +884,7 @@ function battleFields() {
     shake: 0, shakeAmp: 3, flash: 0, hurtT: 0, heartHitT: 0, over: false,
     hitPt: null, hitCol: '#fff', hitBig: false, dmgTxt: '', dmgT: 0,
     bigTxt: '', bigCol: '#fff', bigT: 0,
-    atks: [], defEndT: -1, ink: false, inkT: 0,
+    atks: [], defEndT: -1, ink: false, inkT: 0, guard: 0,
     cds: cards.map(() => 0),
     rushT: 0, rushDmg: 0, rushTaps: 0, rushTapFx: []
   };
@@ -929,6 +960,7 @@ function renderHand() {
     b.style.borderColor = r.col;
     const val = c.type === 'heal' ? 'HEAL ' + powOf(i) :
                 c.type === 'rush' ? 'MAX ' + powOf(i) * 3 :
+                c.type === 'guard' ? 'ガード' :
                 'ATK ' + powOf(i);
     b.innerHTML = '<span style="color:' + r.col + '">' + c.name + '</span><span class="sub">' + c.desc + '</span><span class="atk">' + val + '</span>';
     const cd = battle ? battle.cds[i] : 0;
@@ -973,6 +1005,7 @@ function useCard(i) {
 // ---- ターン経過 (防御おわり) ----
 function endTurn(b) {
   for (let i = 0; i < b.cds.length; i++) if (b.cds[i] > 0) b.cds[i]--;
+  b.guard = 0; // シールドは1ターンで きれる
   renderHand();
 }
 
@@ -988,6 +1021,7 @@ cv.addEventListener('click', e => {
     b.lockY = b.hy;
     if (b.card.type === 'heal') resolveHeal();
     else if (b.card.type === 'revive') resolveRevive();
+    else if (b.card.type === 'guard') resolveGuard();
     else resolveHit();
     return;
   }
@@ -1064,6 +1098,24 @@ function resolveHeal() {
   b.bigTxt = g.just ? 'だいかいふく!!' : 'かいふく!'; b.bigCol = '#97e4a0'; b.bigT = 44;
   b.shake = 0;
   say('* ' + b.bigTxt + ' HPが ' + heal + ' かいふくした!');
+  setTimeout(() => {
+    if (!battle) return;
+    startDefend();
+  }, 900);
+}
+
+function resolveGuard() {
+  const b = battle;
+  b.state = 'result';
+  const g = gradeOf(b);
+  b.guard = g.just ? 0.8 : g.mult >= 1 ? 0.55 : g.mult >= 0.6 ? 0.3 : 0.15;
+  b.hitPt = [b.lockX, b.lockY];
+  b.hitCol = '#7fd4ff'; b.hitBig = g.just;
+  b.dmgTxt = '-' + Math.round(b.guard * 100) + '%'; b.dmgT = 46;
+  b.bigTxt = g.just ? 'かんぜんガード!!' : 'ガード!'; b.bigCol = '#7fd4ff'; b.bigT = 44;
+  b.shake = 0;
+  say('* ' + g.label + ' シールド てんかい!\n* つぎの こうげきの ダメージ ' + Math.round(b.guard * 100) + '% カット!');
+  mpSend('hp', { hp: S.hp, maxhp: maxHP() });
   setTimeout(() => {
     if (!battle) return;
     startDefend();
@@ -1192,7 +1244,7 @@ function strike(b, a) {
   a.done = true; a.strikeT = 10;
   if (b.over) return;
   const roll = b.atkMin + rnd(b.atkMax - b.atkMin + 1);
-  const ed = Math.max(1, Math.round(roll * (a.dmgF || 1)));
+  const ed = Math.max(1, Math.round(roll * (a.dmgF || 1) * (1 - (b.guard || 0))));
   S.hp = Math.max(0, S.hp - ed);
   b.hurtT = 12; b.heartHitT = 14;
   hud();
@@ -1623,14 +1675,16 @@ function drawBattle() {
     const sx = BX + b.card.sweet[0] * BW, sy = BY + b.card.sweet[1] * BH;
     const pulse = 1 + Math.sin(anim / 8) * 0.12;
     const scol = b.card.type === 'heal' ? '151,228,160' :
-                 b.card.type === 'revive' ? '247,168,196' : '255,233,122';
+                 b.card.type === 'revive' ? '247,168,196' :
+                 b.card.type === 'guard' ? '127,212,255' : '255,233,122';
     cx.fillStyle = 'rgba(' + scol + ',0.12)';
     cx.beginPath(); cx.arc(sx, sy, 30 * pulse, 0, 7); cx.fill();
     cx.strokeStyle = 'rgba(' + scol + ',0.5)';
     cx.beginPath(); cx.arc(sx, sy, 30 * pulse, 0, 7); cx.stroke();
     cx.fillStyle = 'rgba(' + scol + ',0.3)';
     cx.beginPath(); cx.arc(sx, sy, 13, 0, 7); cx.fill();
-    cx.fillStyle = b.card.type === 'heal' ? '#97e4a0' : b.card.type === 'revive' ? '#f7a8c4' : '#ffe97a';
+    cx.fillStyle = b.card.type === 'heal' ? '#97e4a0' : b.card.type === 'revive' ? '#f7a8c4' :
+                   b.card.type === 'guard' ? '#7fd4ff' : '#ffe97a';
     cx.fillRect(sx - 1, sy - 5, 2, 10); cx.fillRect(sx - 5, sy - 1, 10, 2);
   }
   if (b.state === 'vert') {
@@ -1660,6 +1714,17 @@ function drawBattle() {
     const beat = 1 + (anim % 40 < 6 ? 0.25 : 0);
     drawHeart(HX, HY, 6 * beat, b.heartHitT > 0 && b.heartHitT % 4 < 2 ? '#fff' : '#e24b4a');
     if (b.heartHitT > 0) b.heartHitT--;
+    if (b.guard > 0) {
+      const gp = 1 + Math.sin(anim / 7) * 0.1;
+      cx.strokeStyle = 'rgba(127,212,255,' + (0.5 + Math.sin(anim / 5) * 0.2) + ')';
+      cx.lineWidth = 2;
+      cx.beginPath(); cx.arc(HX, HY, 14 * gp, 0, 7); cx.stroke();
+      cx.lineWidth = 1;
+      cx.fillStyle = '#7fd4ff'; cx.font = '8px monospace';
+      cx.textAlign = 'center';
+      cx.fillText('-' + Math.round(b.guard * 100) + '%', HX, HY + 26);
+      cx.textAlign = 'left';
+    }
     drawAtks(b);
     if (b.ink) {
       if (b.inkT > 0) {
@@ -1769,7 +1834,7 @@ function drawInter() {
   }
   if (anim % 80 < 48) {
     cx.fillStyle = '#ffe97a'; cx.font = '10px monospace';
-    cx.fillText(MP && MP.p ? '▶ じゅんびOK で スタート' : '▶ たたかう で スタート', 96, 292);
+    cx.fillText(MP && MP.p ? '▶ ふたりとも たたかう で スタート' : '▶ たたかう で スタート', 96, 292);
   }
   cx.textAlign = 'left';
 }
