@@ -261,7 +261,25 @@ begin
   return jsonb_build_object('ok', true, 'save', coalesce(v_save, ''));
 end $$;
 
+-- 進行度ランキング (bestProg で じょうい30にん)
+create or replace function public.dm_ranking()
+returns jsonb
+language sql security definer set search_path = public, extensions
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object('name', name, 'prog', prog, 'lv', lv) order by prog desc, lv desc), '[]'::jsonb)
+  from (
+    select a.username as name,
+           coalesce((nullif(a.save, '')::jsonb ->> 'bestProg')::int, 1) as prog,
+           coalesce((nullif(a.save, '')::jsonb ->> 'lv')::int, 1) as lv
+    from dm_accounts a
+    where a.banned = false and a.save like '%bestProg%'
+    order by prog desc, lv desc
+    limit 30
+  ) t;
+$$;
+
 grant execute on function public.dm_friend_request(uuid, text)           to anon, authenticated;
 grant execute on function public.dm_friend_respond(uuid, text, boolean)  to anon, authenticated;
 grant execute on function public.dm_friends(uuid)                        to anon, authenticated;
 grant execute on function public.dm_profile(uuid, text)                  to anon, authenticated;
+grant execute on function public.dm_ranking()                            to anon, authenticated;
