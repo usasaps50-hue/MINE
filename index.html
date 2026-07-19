@@ -458,20 +458,20 @@ const FOES = {
   kani:   { name: 'カニ',     hpB: 54, hpG: 16, atkF: 1.1, gim: 'pinch',  hue: 8 },
   same:   { name: 'サメ',     hpB: 38, hpG: 13, atkF: 1.4, gim: 'charge', hue: 210 },
   bigtako: { name: '大ダコ',  hpB: 130, hpG: 22, atkF: 1.0, gim: 'spin8', hue: 285 },
-  // WORLD2: ひんやり どうくつ
-  bat:    { name: 'コウモリ',   hpB: 30, hpG: 11, atkF: 1.0, gim: 'charge', hue: 270 },
-  spider: { name: 'クモ',       hpB: 34, hpG: 12, atkF: 0.9, gim: 'tent',   hue: 130 },
-  slime:  { name: 'スライム',   hpB: 42, hpG: 13, atkF: 0.8, gim: 'jelly',  hue: 155 },
-  mole:   { name: 'モグラ',     hpB: 32, hpG: 11, atkF: 0.9, gim: 'spike',  hue: 28 },
-  golem:  { name: 'いわゴーレム', hpB: 60, hpG: 16, atkF: 1.05, gim: 'pinch', hue: 22 },
-  biggolem: { name: '大ゴーレム', hpB: 140, hpG: 22, atkF: 1.0, gim: 'spike', hue: 22 },
-  // WORLD3: みどりの へいげん
-  chick:  { name: 'ヒヨコ',     hpB: 26, hpG: 10, atkF: 0.8, gim: 'spike',  hue: 50 },
-  pig:    { name: 'ブタ',       hpB: 44, hpG: 13, atkF: 1.0, gim: 'charge', hue: 340 },
-  sheep:  { name: 'ヒツジ',     hpB: 38, hpG: 12, atkF: 0.85, gim: 'jelly', hue: 200 },
-  cow:    { name: 'ウシ',       hpB: 52, hpG: 15, atkF: 1.05, gim: 'charge', hue: 30 },
-  horse:  { name: 'ウマ',       hpB: 46, hpG: 14, atkF: 1.1, gim: 'pinch',  hue: 25 },
-  bigcow: { name: '大ウシ',     hpB: 150, hpG: 23, atkF: 1.0, gim: 'charge', hue: 30 }
+  // WORLD2: ひんやり どうくつ (それぞれ せんよう攻撃)
+  bat:    { name: 'コウモリ',   hpB: 30, hpG: 11, atkF: 1.0, gim: 'zigzag', hue: 270 },
+  spider: { name: 'クモ',       hpB: 34, hpG: 12, atkF: 0.9, gim: 'split',  hue: 130 },
+  slime:  { name: 'スライム',   hpB: 42, hpG: 13, atkF: 0.8, gim: 'bounce', hue: 155 },
+  mole:   { name: 'モグラ',     hpB: 32, hpG: 11, atkF: 0.9, gim: 'burrow', hue: 28 },
+  golem:  { name: 'いわゴーレム', hpB: 60, hpG: 16, atkF: 1.05, gim: 'grow', hue: 22 },
+  biggolem: { name: '大ゴーレム', hpB: 140, hpG: 22, atkF: 1.0, gim: 'rain', hue: 22 },
+  // WORLD3: みどりの へいげん (それぞれ せんよう攻撃)
+  chick:  { name: 'ヒヨコ',     hpB: 26, hpG: 10, atkF: 0.8, gim: 'rain',   hue: 50 },
+  pig:    { name: 'ブタ',       hpB: 44, hpG: 13, atkF: 1.0, gim: 'curve',  hue: 340 },
+  sheep:  { name: 'ヒツジ',     hpB: 38, hpG: 12, atkF: 0.85, gim: 'bounce', hue: 200 },
+  cow:    { name: 'ウシ',       hpB: 52, hpG: 15, atkF: 1.05, gim: 'grow',  hue: 30 },
+  horse:  { name: 'ウマ',       hpB: 46, hpG: 14, atkF: 1.1, gim: 'zigzag', hue: 25 },
+  bigcow: { name: '大ウシ',     hpB: 150, hpG: 23, atkF: 1.0, gim: 'orbit', hue: 30 }
 };
 const WORLDS = [
   { name: 'すいちゅうシティ', orb: 'water',
@@ -502,11 +502,13 @@ const APPEAR_MSG = {
 };
 // 敵ごとの こうげきメッセージ (丸タップのやり方は switch側で つけたす)
 const ATK_MSG = {
-  tako: 'タコの こうげき! 丸を タップして 触手を こわせ!', spider: 'クモの巣を なげてきた! 丸を タップ!',
-  kurage: 'クラゲが おちてくる!', slime: 'スライムが ふってくる!', sheep: 'ヒツジが ころがり おちてくる!',
-  fugu: 'フグの トゲミサイル!', mole: 'モグラが つちを とばしてきた!', chick: 'ヒヨコの つつき こうげき!', biggolem: '大ゴーレムの いわおとし!',
-  kani: 'カニの はさみうち!', golem: 'ゴーレムの りょうてパンチ!', horse: 'ウマの まえあし けり!',
-  same: 'サメの とっしん!', bat: 'コウモリの きゅうこうか!', pig: 'ブタの とっしん!', cow: 'ウシの つのづき!', bigcow: '大ウシの だいとつげき!'
+  tako: 'タコの こうげき! 丸を タップして 触手を こわせ!',
+  kurage: 'クラゲが おちてくる!', fugu: 'フグの トゲミサイル!', kani: 'カニの はさみうち!', same: 'サメの とっしん!',
+  bat: 'コウモリが ジグザグに とびまわる!', spider: 'クモの糸が 2つに わかれた!',
+  slime: 'スライムが ぼよんぼよん はねる!', mole: 'モグラが つちに もぐった!',
+  golem: 'ゴーレムが ちからを ためている!', biggolem: '大ゴーレムが いわを ふらせる!',
+  chick: 'ヒヨコの みだれ つつき!', pig: 'ブタが まわりこんでくる!', sheep: 'ヒツジが ころころ はねてくる!',
+  cow: 'ウシが つのを かまえて ためている!', horse: 'ウマが あばれ まわる!', bigcow: '大ウシが ぐるっと まわって とっしん!'
 };
 // 大ボスの会話 (HPが減ると しゃべる)
 const BOSS_TALK = {
@@ -2156,6 +2158,63 @@ function startDefend() {
       done: false, broken: false, active: false, popT: 0, strikeT: 0, zapT: 0, cx: -99, cy: -99
     });
   };
+  // ---- キャラごとの せんよう攻撃 ----
+  const hit = FOES[b.key].name + 'の こうげきが あたった!';
+  const mk = o => Object.assign({ done: false, broken: false, active: false, popT: 0, strikeT: 0, zapT: 0, cx: -99, cy: -99, hitMsg: hit }, o);
+  // コウモリ/ウマ: ジグザグに とんでくる
+  const addZig = (n, i0) => {
+    const dur = Math.max(74, (boss ? 92 : 100) - Math.floor(L * 0.6));
+    for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'zigzag', side: SIDES[rnd(4)], pos: 0.15 + Math.random() * 0.7,
+      amp: 12 + rnd(8), freq: 0.16 + Math.random() * 0.05, t: -((i0 + i) * 40 + rnd(20)), dur: dur, dmgF: 0.9 }));
+  };
+  // クモ: 糸が わかれて 2ほうこうから
+  const addSplit = (pairs, i0) => {
+    const dur = Math.max(80, (boss ? 100 : 112) - L);
+    for (let i = 0; i < pairs; i++) {
+      const px = 0.3 + Math.random() * 0.4;
+      const dl = -((i0 + i) * 56 + rnd(22));
+      [-1, 1].forEach(d => b.atks.push(mk({ gim: 'split', px: px, dir: d, t: dl, dur: dur, dmgF: 0.9 })));
+    }
+  };
+  // スライム/ヒツジ: かべに はねながら おちてくる
+  const addBounce = (n, i0) => {
+    const dur = Math.max(96, (boss ? 116 : 128) - L);
+    for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'bounce', vx: 1.1 + Math.random() * 0.7, ph: rnd(60),
+      t: -((i0 + i) * 50 + rnd(24)), dur: dur, dmgF: 0.85 }));
+  };
+  // モグラ: もぐって ちかづき、でた ときだけ こわせる
+  const addBurrow = (n, i0) => {
+    const dur = Math.max(96, (boss ? 118 : 130) - L);
+    for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'burrow', side: SIDES[rnd(4)], pos: 0.2 + Math.random() * 0.6,
+      hops: 3, t: -((i0 + i) * 64 + rnd(24)), dur: dur, dmgF: 0.9 }));
+  };
+  // ゴーレム/ウシ: パワーを ためて どーん(ためてる間に タップ)
+  const addGrow = (n, i0) => {
+    const dur = Math.max(70, (boss ? 88 : 96) - Math.floor(L * 0.6));
+    for (let i = 0; i < n; i++) {
+      const ang = Math.random() * Math.PI * 2, r = 44 + rnd(14);
+      b.atks.push(mk({ gim: 'grow', gx: HX + Math.cos(ang) * r, gy: HY + Math.sin(ang) * r, grow: 0, hitR: 22,
+        t: -((i0 + i) * 70 + rnd(20)), dur: dur, dmgF: 1.1 }));
+    }
+  };
+  // 大ゴーレム/ヒヨコ: たくさん ふってくる (すばやく タップ)
+  const addRain = (n, i0) => {
+    const dur = Math.max(52, (boss ? 66 : 74) - Math.floor(L / 2));
+    for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'rain', pos: 0.12 + Math.random() * 0.76, hitR: 13,
+      t: -((i0 + i) * 20 + rnd(12)), dur: dur, dmgF: 0.55 }));
+  };
+  // ブタ: カーブして まわりこんでくる
+  const addCurve = (n, i0) => {
+    const dur = Math.max(80, (boss ? 96 : 106) - L);
+    for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'curve', side: rnd(2) ? 'left' : 'right', pos: 0.2 + Math.random() * 0.6,
+      bend: (rnd(2) ? 1 : -1) * (28 + rnd(16)), t: -((i0 + i) * 46 + rnd(20)), dur: dur, dmgF: 0.95 }));
+  };
+  // 大ウシ: ぐるっと まわってから とっこむ
+  const addOrbit = (n, i0) => {
+    const dur = Math.max(96, (boss ? 120 : 130) - L);
+    for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'orbit', ang0: Math.random() * 7, rots: 1.5, r0: 54 + rnd(12),
+      ang: 0, rad: 60, t: -((i0 + i) * 44 + rnd(20)), dur: dur, dmgF: 0.9 }));
+  };
   switch (b.gim) {
     case 'tent':
       addTents(Math.min(7, (boss ? 3 : 2) + Math.floor(L / 6)), 0);
@@ -2177,6 +2236,38 @@ function startDefend() {
     case 'charge':
       addCharge(Math.min(4, (boss ? 3 : 2) + Math.floor(L / 12)), 0);
       msg = '* ' + (ATK_MSG[b.key] || 'とっしん!') + '\n* おおきな丸を タップして とめろ!';
+      break;
+    case 'zigzag':
+      addZig(Math.min(6, (boss ? 4 : 3) + Math.floor(L / 8)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'ジグザグ こうげき!') + '\n* ジグザグに とんでくる 丸を タップ!';
+      break;
+    case 'split':
+      addSplit(Math.min(3, (boss ? 2 : 1) + Math.floor(L / 12)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'こうげき!') + '\n* 2つに わかれる 丸を どっちも タップ!';
+      break;
+    case 'bounce':
+      addBounce(Math.min(5, (boss ? 3 : 2) + Math.floor(L / 10)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'はねてくる!') + '\n* かべに はねる 丸を タップ!';
+      break;
+    case 'burrow':
+      addBurrow(Math.min(4, (boss ? 3 : 2) + Math.floor(L / 12)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'もぐって くる!') + '\n* でてきた ときに 丸を タップ!';
+      break;
+    case 'grow':
+      addGrow(Math.min(3, (boss ? 3 : 2) + Math.floor(L / 14)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'ちからを ためてる!') + '\n* おおきくなる 丸を ためてる間に タップ!';
+      break;
+    case 'rain':
+      addRain(Math.min(12, (boss ? 9 : 7) + Math.floor(L / 5)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'いっぱい ふってくる!') + '\n* ふってくる 丸を すばやく タップ!';
+      break;
+    case 'curve':
+      addCurve(Math.min(6, (boss ? 4 : 3) + Math.floor(L / 8)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'まわりこんでくる!') + '\n* カーブする 丸を タップ!';
+      break;
+    case 'orbit':
+      addOrbit(Math.min(6, (boss ? 5 : 4) + Math.floor(L / 8)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'ぐるぐる まわってくる!') + '\n* まわってから とっこむ 丸を タップ!';
       break;
     case 'spin8': // 大ダコ: 「通常ターン」と「回転ターン」を ランダムで きりかえ
       if (Math.random() < 0.5) {
@@ -2285,6 +2376,68 @@ function updateDefend(b) {
       a.radNow = 66 * (1 - p) + 5;
       a.cx = HX + Math.cos(a.angNow) * a.radNow;
       a.cy = HY + Math.sin(a.angNow) * a.radNow;
+      a.active = true;
+      if (p >= 1) strike(b, a);
+    } else if (a.gim === 'zigzag') {
+      const p = Math.min(1, a.t / a.dur);
+      const [ex, ey] = edgePt(a.side, a.pos);
+      const bx = ex + (HX - ex) * p, by = ey + (HY - ey) * p;
+      const dx = HX - ex, dy = HY - ey, nl = Math.hypot(dx, dy) || 1;
+      const off = Math.sin(a.t * a.freq) * a.amp * (1 - p * 0.4);
+      a.cx = bx + (-dy / nl) * off; a.cy = by + (dx / nl) * off;
+      a.active = true;
+      if (p >= 1) strike(b, a);
+    } else if (a.gim === 'split') {
+      const p = Math.min(1, a.t / a.dur);
+      const x0 = BX + a.px * BW, y0 = BY + 2;
+      a.cx = x0 + a.dir * p * BW * 0.34; a.cy = y0 + (HY - y0) * p;
+      a.active = true;
+      if (p >= 1) strike(b, a);
+    } else if (a.gim === 'bounce') {
+      const p = Math.min(1, a.t / a.dur);
+      const y0 = BY + 2;
+      const tri = Math.abs(((a.t * a.vx / 42 + a.ph / 30) % 2) - 1); // 0..1 さんかくは
+      let bx = BX + 10 + tri * (BW - 20);
+      a.cx = bx + (HX - bx) * p * 0.55; a.cy = y0 + (HY - y0) * p;
+      a.active = true;
+      if (p >= 1) strike(b, a);
+    } else if (a.gim === 'burrow') {
+      const seg = a.dur / a.hops;
+      const idx = Math.min(a.hops - 1, Math.floor(a.t / seg));
+      const lp = (a.t - idx * seg) / seg;
+      const frac = (idx + 0.5) / a.hops;
+      const [ex, ey] = edgePt(a.side, a.pos);
+      a.cx = ex + (HX - ex) * frac; a.cy = ey + (HY - ey) * frac;
+      a.active = lp > 0.25 && lp < 0.85; // でてる間だけ こわせる
+      if (a.t >= a.dur) strike(b, a);
+    } else if (a.gim === 'grow') {
+      if (a.t <= a.dur) {
+        a.cx = a.gx; a.cy = a.gy; a.active = true; a.grow = Math.min(1, a.t / a.dur);
+      } else {
+        a.active = false;
+        const q = (a.t - a.dur) / 10;
+        a.cx = a.gx + (HX - a.gx) * Math.min(1, q); a.cy = a.gy + (HY - a.gy) * Math.min(1, q);
+        if (q >= 1) strike(b, a);
+      }
+    } else if (a.gim === 'rain') {
+      const p = Math.min(1, a.t / a.dur);
+      const x0 = BX + a.pos * BW, y0 = BY + 2;
+      a.cx = x0 + (HX - x0) * p * 0.3; a.cy = y0 + (HY - y0) * p;
+      a.active = true;
+      if (p >= 1) strike(b, a);
+    } else if (a.gim === 'curve') {
+      const p = Math.min(1, a.t / a.dur);
+      const [ex, ey] = edgePt(a.side, a.pos);
+      const cxp = (ex + HX) / 2 - a.bend, cyp = (ey + HY) / 2 + a.bend * 0.6;
+      a.cx = (1 - p) * (1 - p) * ex + 2 * (1 - p) * p * cxp + p * p * HX;
+      a.cy = (1 - p) * (1 - p) * ey + 2 * (1 - p) * p * cyp + p * p * HY;
+      a.active = true;
+      if (p >= 1) strike(b, a);
+    } else if (a.gim === 'orbit') {
+      const p = Math.min(1, a.t / a.dur);
+      a.ang = a.ang0 + p * Math.PI * 2 * a.rots;
+      a.rad = a.r0 * (1 - p) + 4;
+      a.cx = HX + Math.cos(a.ang) * a.rad; a.cy = HY + Math.sin(a.ang) * a.rad;
       a.active = true;
       if (p >= 1) strike(b, a);
     }
@@ -2819,6 +2972,66 @@ function drawAtks(b) {
       cx.textAlign = 'center';
       cx.fillText('' + a.hp3, a.cx, a.cy - 12);
       cx.textAlign = 'left';
+    } else if (a.gim === 'zigzag') {
+      // コウモリ/ウマ: ちいさな だんがん + のこりきどう
+      cx.strokeStyle = 'rgba(255,255,255,.18)';
+      cx.beginPath(); cx.moveTo(a.cx, a.cy);
+      cx.lineTo(a.cx - Math.cos(a.t * a.freq) * a.amp * 0.5, a.cy + 4); cx.stroke();
+      cx.fillStyle = tcol;
+      cx.beginPath(); cx.moveTo(a.cx - 5, a.cy); cx.lineTo(a.cx, a.cy - 4); cx.lineTo(a.cx + 5, a.cy); cx.lineTo(a.cx, a.cy + 4); cx.fill();
+      cx.fillStyle = tdark; cx.beginPath(); cx.arc(a.cx, a.cy, 2.5, 0, 7); cx.fill();
+      drawTapCircle(a, a.t / a.dur > 0.66);
+    } else if (a.gim === 'split') {
+      cx.fillStyle = tcol; cx.beginPath(); cx.arc(a.cx, a.cy, 5, 0, 7); cx.fill();
+      cx.strokeStyle = tdark; cx.lineWidth = 1;
+      cx.beginPath(); cx.moveTo(a.cx - 5, a.cy); cx.lineTo(a.cx + 5, a.cy); cx.moveTo(a.cx, a.cy - 5); cx.lineTo(a.cx, a.cy + 5); cx.stroke();
+      drawTapCircle(a, a.t / a.dur > 0.7);
+    } else if (a.gim === 'bounce') {
+      cx.fillStyle = tcol;
+      cx.beginPath(); cx.arc(a.cx, a.cy, 7, Math.PI, 0); cx.rect(a.cx - 7, a.cy, 14, 3); cx.fill();
+      cx.fillStyle = 'rgba(255,255,255,.4)'; cx.beginPath(); cx.arc(a.cx - 2, a.cy - 2, 2, 0, 7); cx.fill();
+      drawTapCircle(a, a.t / a.dur > 0.7);
+    } else if (a.gim === 'burrow') {
+      if (a.active) {
+        cx.fillStyle = tdark; // つちの やま
+        cx.beginPath(); cx.arc(a.cx, a.cy + 3, 9, Math.PI, 0); cx.fill();
+        cx.fillStyle = tcol;
+        cx.beginPath(); cx.arc(a.cx, a.cy, 6, 0, 7); cx.fill();
+        cx.fillStyle = '#f7a8c4'; cx.beginPath(); cx.arc(a.cx, a.cy + 1, 2, 0, 7); cx.fill();
+        drawTapCircle(a, true);
+      } else {
+        cx.fillStyle = 'rgba(0,0,0,.4)'; // あな
+        cx.beginPath(); cx.ellipse(a.cx, a.cy + 4, 8, 3, 0, 0, 7); cx.fill();
+      }
+    } else if (a.gim === 'grow') {
+      if (a.active) {
+        const gr = 6 + a.grow * 16;
+        cx.fillStyle = 'rgba(226,75,74,' + (0.15 + a.grow * 0.25) + ')';
+        cx.beginPath(); cx.arc(a.cx, a.cy, gr, 0, 7); cx.fill();
+        cx.fillStyle = tcol;
+        cx.fillRect(a.cx - gr * 0.5, a.cy - gr * 0.5, gr, gr);
+        cx.strokeStyle = tdark; cx.lineWidth = 1;
+        cx.strokeRect(a.cx - gr * 0.5, a.cy - gr * 0.5, gr, gr);
+        cx.beginPath(); cx.moveTo(a.cx - gr * 0.3, a.cy - gr * 0.4); cx.lineTo(a.cx + gr * 0.1, a.cy); cx.lineTo(a.cx - gr * 0.2, a.cy + gr * 0.4); cx.stroke();
+        cx.strokeStyle = a.grow > 0.8 && anim % 8 < 4 ? '#e24b4a' : '#ffe97a'; cx.lineWidth = 2;
+        cx.beginPath(); cx.arc(a.cx, a.cy, gr + 3, 0, 7); cx.stroke(); cx.lineWidth = 1;
+      } else {
+        cx.fillStyle = tcol; cx.fillRect(a.cx - 8, a.cy - 8, 16, 16);
+      }
+    } else if (a.gim === 'rain') {
+      cx.fillStyle = tcol;
+      cx.beginPath(); cx.moveTo(a.cx, a.cy - 5); cx.lineTo(a.cx + 3, a.cy + 3); cx.lineTo(a.cx - 3, a.cy + 3); cx.fill();
+      drawTapCircle(a, a.t / a.dur > 0.6, 9);
+    } else if (a.gim === 'curve') {
+      cx.fillStyle = tcol; cx.beginPath(); cx.arc(a.cx, a.cy, 6, 0, 7); cx.fill();
+      cx.fillStyle = tdark; cx.beginPath(); cx.arc(a.cx, a.cy, 3, 0, 7); cx.fill();
+      drawTapCircle(a, a.t / a.dur > 0.72);
+    } else if (a.gim === 'orbit') {
+      cx.strokeStyle = 'rgba(255,255,255,.16)'; cx.lineWidth = 1;
+      cx.beginPath(); cx.arc(HX, HY, a.rad, a.ang - 0.6, a.ang); cx.stroke();
+      cx.fillStyle = tcol; cx.beginPath(); cx.arc(a.cx, a.cy, 6, 0, 7); cx.fill();
+      cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(a.cx - 1.5, a.cy - 1.5, 2, 0, 7); cx.fill();
+      drawTapCircle(a, a.rad < 24);
     }
   }
 }
