@@ -391,15 +391,23 @@ const FOES = {
   fugu:   { name: 'フグ',     hpB: 28, hpG: 10, atkF: 0.7, gim: 'spike',  hue: 48 },
   kani:   { name: 'カニ',     hpB: 54, hpG: 16, atkF: 1.1, gim: 'pinch',  hue: 8 },
   same:   { name: 'サメ',     hpB: 38, hpG: 13, atkF: 1.6, gim: 'charge', hue: 210 },
-  kraken: { name: 'クラーケン', hpB: 160, hpG: 26, atkF: 1.2, gim: 'mix',  hue: 265 }
+  bigtako: { name: '大ダコ',  hpB: 130, hpG: 22, atkF: 1.0, gim: 'spin8', hue: 285 }
 };
 const ZAKO_ORDER = ['tako', 'kurage', 'fugu', 'kani', 'same'];
-const BOSS_ORDER = { 5: 'tako', 10: 'kurage', 15: 'fugu', 20: 'kani', 25: 'same', 30: 'kraken' };
+const BOSS_ORDER = { 5: 'tako', 10: 'kurage', 15: 'fugu', 20: 'kani', 25: 'same', 30: 'bigtako' };
 const APPEAR_MSG = {
   tako: 'タコが あらわれた!', kurage: 'クラゲが ふよふよ ただよってきた!',
   fugu: 'フグが ぷくーっと ふくらんだ!', kani: 'カニが ハサミを カチカチ ならしている!',
-  same: 'サメが こちらを ロックオンした…!', kraken: 'しんかいの おう クラーケンが めざめた!!!'
+  same: 'サメが こちらを ロックオンした…!',
+  bigtako: 'おおきな タコが ぬっと あらわれた…!\n* 大ダコ「よくきたな ちいさいの。\n  ワシが すいちゅうシティの ぬしじゃ」'
 };
+// 大ダコの会話 (HPが減ると しゃべる)
+const BIGTAKO_TALK = [
+  '',
+  '* 大ダコ「ほほう… なかなか やるのう」',
+  '* 大ダコ「まだまだ! ほんきを だすぞい!!」',
+  '* 大ダコ「ぐぬぬ… ワシの 8ぽんの うでが…!」'
+];
 
 // ---- 便利関数 ----
 function progOf(w, v) { return (w - 1) * WAVES_PER_WORLD + v; }
@@ -1016,6 +1024,7 @@ function onMpEvt(p) {
         battle.shake = p.crit ? 12 : 6; battle.shakeAmp = p.crit ? 4 : 2;
         battle.flash = p.crit ? 8 : 3;
         if (battle.ehp <= 0) winBattle();
+        else bossTalk(battle);
       }
       break;
     case 'heal':
@@ -1361,12 +1370,12 @@ function makeEnemy() {
   const key = boss ? BOSS_ORDER[S.wave] : ZAKO_ORDER[(S.wave + S.world * 2) % ZAKO_ORDER.length];
   const f = FOES[key];
   let hp = f.hpB + (L - 1) * f.hpG;
-  if (boss && key !== 'kraken') hp = Math.round(hp * 2.2);
+  if (boss && key !== 'bigtako') hp = Math.round(hp * 2.2);
   const am = (boss ? 4 : 2) + Math.floor(L / 3);
   const ax = (boss ? 7 : 4) + Math.floor(L * 0.7);
   return {
     key: key, boss: boss, gim: f.gim, L: L,
-    name: (boss && key !== 'kraken' ? 'ボス' : '') + f.name + ' LV' + L,
+    name: (boss && key !== 'bigtako' ? 'ボス' : '') + f.name + ' LV' + L,
     maxhp: hp, ehp: hp,
     atkMin: Math.max(1, Math.round(am * f.atkF)),
     atkMax: Math.max(2, Math.round(ax * f.atkF)),
@@ -1426,7 +1435,7 @@ function winBattle() {
   S.wave++;
   if (S.wave > WAVES_PER_WORLD) {
     S.world++; S.wave = 1;
-    say(dlg.textContent + '\n* クラーケンを たおした!!\n* WORLD ' + (S.world - 1) + '「' + worldName(S.world - 1) + '」クリア!!');
+    say(dlg.textContent + '\n* 大ダコ「みごとじゃ…! このシティは\n  おぬしに まかせたぞ……」\n* WORLD ' + (S.world - 1) + '「' + worldName(S.world - 1) + '」クリア!!');
   } else if (b.boss) {
     say(dlg.textContent + '\n* ボスを たおした!');
   }
@@ -1571,6 +1580,12 @@ cv.addEventListener('click', e => {
       if (a.done || !a.active) continue;
       if (Math.hypot(mx - a.cx, my - a.cy) < (a.hitR || 18)) {
         if (a.gim === 'jelly' && a.glow) { a.zapT = 10; say('* ビリッ!! ひかってるあいだは こわせない!'); return; }
+        if (a.gim === 'spin') { // かいてん触手は 3タップで はかい
+          a.hp3--;
+          if (a.hp3 <= 0) { a.done = true; a.broken = true; a.popT = 12; }
+          else { a.zapT = 6; say('* かいてん触手に ヒット! あと ' + a.hp3 + 'かい!'); }
+          return;
+        }
         a.done = true; a.broken = true; a.popT = 12;
         return;
       }
@@ -1606,6 +1621,17 @@ function ringGrade(b) {
   if (d < 14) return { mult: 0.6, label: 'かすった…', col: '#f09f5b', just: false };
   return { mult: 0.25, label: 'とおい…', col: '#9c92c4', just: false };
 }
+// 大ダコが HPのへりぐあいで しゃべる
+function bossTalk(b) {
+  if (!b || b.key !== 'bigtako' || b.ehp <= 0) return;
+  const q = b.ehp / b.maxhp;
+  const stage = q <= 0.25 ? 3 : q <= 0.5 ? 2 : q <= 0.75 ? 1 : 0;
+  if (stage > (b.talkStage || 0)) {
+    b.talkStage = stage;
+    say(dlg.textContent + '\n' + BIGTAKO_TALK[stage]);
+  }
+}
+
 function resolveHit() { resolveHitG(gradeOf(battle)); }
 function resolveHitG(g) {
   const b = battle;
@@ -1615,6 +1641,7 @@ function resolveHitG(g) {
   fxHit(b, g, '' + dmg);
   mpSend('dmg', { dmg: dmg, crit: g.just, card: b.card.name, ehp: b.ehp });
   say('* ' + g.label + ' ' + dmg + ' ダメージ!');
+  bossTalk(b);
   setTimeout(() => {
     if (!battle) return;
     if (b.ehp <= 0) { winBattle(); return; }
@@ -1675,6 +1702,7 @@ function resolveRush() {
   b.bigTxt = maxed ? 'MAXラッシュ!!' : 'ラッシュ!'; b.bigCol = b.hitCol; b.bigT = 44;
   mpSend('dmg', { dmg: dmg, crit: maxed, card: 'ラッシュ', ehp: b.ehp });
   say('* ' + b.rushTaps + 'れんだ! ' + dmg + ' ダメージ!' + (maxed ? ' (MAX!!)' : ''));
+  bossTalk(b);
   setTimeout(() => {
     if (!battle) return;
     if (b.ehp <= 0) { winBattle(); return; }
@@ -1718,7 +1746,8 @@ function startDefend() {
     });
   };
   const addSpikes = (n, i0) => {
-    const tele = Math.max(24, (boss ? 34 : 40) - Math.floor(L / 2));
+    // +48フレーム(約0.8びょう) ながく ねらいを見せてから 飛ばす
+    const tele = Math.max(24, (boss ? 34 : 40) - Math.floor(L / 2)) + 48;
     // ボスは 針の間隔をせまく、そのかわり ゆっくり飛んでくる
     const gap = boss ? 21 : 30;
     const fly = boss ? 17 : 13;
@@ -1748,6 +1777,16 @@ function startDefend() {
       done: false, broken: false, active: false, popT: 0, strikeT: 0, zapT: 0, cx: -99, cy: -99
     });
   };
+  // 大ダコ: 8本の触手が 8回転しながら 中心へ。3タップで こわせる
+  const addSpin = () => {
+    const dur = 460; // 8回転ぶん (約7.7びょう)
+    for (let k = 0; k < 8; k++) b.atks.push({
+      gim: 'spin', ang0: k * Math.PI / 4, t: -40, dur: dur, hp3: 3,
+      dmgF: 0.8, hitMsg: 'かいてん触手に まきこまれた!',
+      angNow: 0, radNow: 66,
+      done: false, broken: false, active: false, popT: 0, strikeT: 0, zapT: 0, cx: -99, cy: -99
+    });
+  };
   switch (b.gim) {
     case 'tent':
       addTents(Math.min(7, (boss ? 3 : 2) + Math.floor(L / 6)), 0);
@@ -1770,10 +1809,11 @@ function startDefend() {
       addCharge(Math.min(4, (boss ? 3 : 2) + Math.floor(L / 12)), 0);
       msg = '* サメの とっしん! おおきな丸を タップして とめろ!';
       break;
-    case 'mix':
-      addTents(4, 0); addSpikes(4, 4); addJelly(2, 8);
-      b.ink = Math.random() < 0.7;
-      msg = '* クラーケンの そうこうげき!!';
+    case 'spin8': // 大ダコ: タコの通常攻撃 + 回転触手
+      addTents(4, 0);
+      b.ink = Math.random() < 0.5;
+      addSpin();
+      msg = '* 大ダコ「うずまき 8れんだ じゃーー!!」\n* かいてん触手は 3かい タップで こわせ!';
       break;
   }
   b.inkT = b.ink ? 26 : 0;
@@ -1849,6 +1889,15 @@ function updateDefend(b) {
         a.cy = ey + (HY - ey) * Math.min(1, q);
         if (q >= 1) strike(b, a);
       }
+    } else if (a.gim === 'spin') {
+      // 8回転しながら 外から 中心のハートへ
+      const p = Math.min(1, a.t / a.dur);
+      a.angNow = a.ang0 + p * Math.PI * 2 * 8;
+      a.radNow = 66 * (1 - p) + 5;
+      a.cx = HX + Math.cos(a.angNow) * a.radNow;
+      a.cy = HY + Math.sin(a.angNow) * a.radNow;
+      a.active = true;
+      if (p >= 1) strike(b, a);
     }
   }
   if (allDone && !b.over) {
@@ -1918,11 +1967,11 @@ function drawFoe(b) {
   cx.fillStyle = 'rgba(0,0,0,.5)';
   cx.beginPath(); cx.ellipse(96, 72, 26 * sc, 5, 0, 0, 7); cx.fill();
 
-  if (b.key === 'tako' || b.key === 'kraken') {
-    const w = (b.key === 'kraken' ? 56 : 40) * sc, h = (b.key === 'kraken' ? 36 : 26) * sc;
+  if (b.key === 'tako' || b.key === 'bigtako') {
+    const w = (b.key === 'bigtako' ? 62 : 40) * sc, h = (b.key === 'bigtako' ? 40 : 26) * sc;
     cx.fillStyle = body;
     cx.beginPath(); cx.arc(ox, oy + h - 6, w / 2, Math.PI, 0); cx.rect(ox - w / 2, oy + h - 6, w, 6); cx.fill();
-    const n = b.key === 'kraken' ? 7 : 5;
+    const n = b.key === 'bigtako' ? 8 : 5;
     for (let i = 0; i < n; i++) {
       const fx = ox - w / 2 + 4 + i * ((w - 8) / (n - 1));
       const sway = Math.sin(anim / 9 + i * 1.4) * 2.5;
@@ -1935,9 +1984,12 @@ function drawFoe(b) {
     cx.fillStyle = '#000';
     cx.fillRect(ox - 10, oy + 9, 4, 4); cx.fillRect(ox + 6, oy + 9, 4, 4);
     cx.fillStyle = dark; cx.fillRect(ox - 3, oy + 17, 6, 3);
-    if (b.key === 'kraken') {
+    if (b.key === 'bigtako') {
       cx.fillStyle = '#ffe97a';
       cx.fillRect(ox - w / 2, oy - 10, 6, 10); cx.fillRect(ox - 3, oy - 14, 6, 12); cx.fillRect(ox + w / 2 - 6, oy - 10, 6, 10);
+      // ぬしの ねじりはちまき
+      cx.fillStyle = '#e24b4a';
+      cx.fillRect(ox - w / 2, oy + 2, w, 4);
     } else if (b.boss) {
       cx.fillStyle = '#ffe97a';
       cx.fillRect(ox - w / 2, oy - 8, 5, 8); cx.fillRect(ox - 3, oy - 11, 6, 10); cx.fillRect(ox + w / 2 - 5, oy - 8, 5, 8);
@@ -2148,6 +2200,34 @@ function drawAtks(b) {
         cx.beginPath(); cx.moveTo(12, 0); cx.lineTo(-8, -6); cx.lineTo(-4, 0); cx.lineTo(-8, 6); cx.fill();
         cx.restore();
       }
+    } else if (a.gim === 'spin') {
+      // うずをまく しっぽ (すすんできた軌道のうしろがわ)
+      cx.strokeStyle = tcol; cx.lineWidth = 3 + (3 - a.hp3);
+      cx.beginPath();
+      cx.moveTo(a.cx, a.cy);
+      for (let i2 = 1; i2 <= 6; i2++) {
+        const tq = i2 / 6;
+        const ta = a.angNow - tq * 0.85;
+        const tr = a.radNow + tq * 16;
+        cx.lineTo(HX + Math.cos(ta) * tr, HY + Math.sin(ta) * tr);
+      }
+      cx.stroke(); cx.lineWidth = 1;
+      // 先端 (吸ばんつき)
+      cx.fillStyle = tdark;
+      cx.beginPath(); cx.arc(a.cx, a.cy, 5.5, 0, 7); cx.fill();
+      cx.fillStyle = tcol;
+      cx.beginPath(); cx.arc(a.cx, a.cy, 3, 0, 7); cx.fill();
+      if (a.zapT > 0) { // ヒットした ひかり
+        a.zapT--;
+        cx.fillStyle = 'rgba(255,233,122,.35)';
+        cx.beginPath(); cx.arc(a.cx, a.cy, 14, 0, 7); cx.fill();
+      }
+      drawTapCircle(a, a.t / a.dur > 0.7);
+      // のこりタップ数
+      cx.fillStyle = '#fff'; cx.font = 'bold 8px monospace';
+      cx.textAlign = 'center';
+      cx.fillText('' + a.hp3, a.cx, a.cy - 12);
+      cx.textAlign = 'left';
     }
   }
 }
@@ -2386,7 +2466,7 @@ function drawInter() {
   if (isBossWave(S.wave)) {
     cx.fillStyle = '#e24b4a'; cx.font = 'bold 11px monospace';
     if (anim % 60 < 36) {
-      const bn = S.wave === 30 ? 'クラーケン' : 'ボス' + FOES[BOSS_ORDER[S.wave]].name;
+      const bn = S.wave === 30 ? 'ぬし 大ダコ' : 'ボス' + FOES[BOSS_ORDER[S.wave]].name;
       cx.fillText('!! ' + bn + ' が まちうけている !!', 96, 204);
     }
   }
