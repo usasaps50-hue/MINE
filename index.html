@@ -300,6 +300,9 @@ setInterval(async () => {
   } finally { pollBusy = false; }
 }, POLL_MS);
 
+// プレイ時間を 1びょうごとに かぞえる (ログイン中のみ)
+setInterval(() => { if (token && S && S.inv) S.playSec = (S.playSec || 0) + 1; }, 1000);
+
 async function auth(isNew) {
   const u = document.getElementById('inUser').value;
   const p = document.getElementById('inPass').value;
@@ -370,6 +373,11 @@ const CORE_TYPES = {
   cd:   { name: 'クールダウンコア', descs: ['CD -1ターン', 'CD -2ターン', 'CD -2ターン & つかうとHP+10'], vals: [1, 2, 2] },
   fire: { name: 'かりょくコア', descs: ['いりょく +10%', 'いりょく +30%', 'いりょく +50%'], vals: [10, 30, 50] }
 };
+// ---- アーマー (レアドロップそうび。ハートの見た目も かわる) ----
+const ARMORS = {
+  crab: { name: 'クラブアーマー', col: '#f0654a',
+          desc: '3びょうに1かい うけた こうげきを むこうかして\nダメージの 1/5 を HPとして きゅうしゅうする' }
+};
 
 // ---- ゲーム状態 ----
 let S = { lv: 1, exp: 0, coins: 0, maxhp: 20, hp: 20, world: 1, wave: 1, bestProg: 1, cards: null };
@@ -380,6 +388,15 @@ let anim = 0;
 const BX = 26, BY = 100, BW = 140, BH = 136;
 const HX = 96, HY = BY + BH / 2;
 const FB = { x: 36, y: 262, w: 120, h: 42 }; // キャンバス内「たたかう」ボタン
+const WNL = { x: 6, y: 138, w: 30, h: 30 };  // ◀ まえの WAVE へ
+const WNR = { x: 156, y: 138, w: 30, h: 30 }; // ▶ さきの WAVE へ (bestまで)
+function moveWave(dir) {
+  const nx = progOf(S.world, S.wave) + dir;
+  if (nx < 1 || nx > S.bestProg) return;
+  S.world = Math.floor((nx - 1) / WAVES_PER_WORLD) + 1;
+  S.wave = ((nx - 1) % WAVES_PER_WORLD) + 1;
+  save();
+}
 const WAVES_PER_WORLD = 30;
 const WORLD_NAMES = ['すいちゅうシティ'];
 function worldName(w) { return WORLD_NAMES[w - 1] || '??? のせかい'; }
@@ -439,6 +456,18 @@ function hpCoreBonus() {
   return b;
 }
 function maxHP() { return S.maxhp + hpCoreBonus(); }
+// ---- アーマー ----
+function ownArmor(k) { return !!(S.armors && S.armors[k]); }
+function equippedArmor() { return (S.armorEquip && ownArmor(S.armorEquip)) ? S.armorEquip : null; }
+// ハートの見た目 = 装備しているアーマーで変わる
+function heartSkin() { const a = equippedArmor(); return a || 'normal'; }
+function fmtPlay(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  if (h > 0) return h + 'じかん' + m + 'ふん';
+  if (m > 0) return m + 'ふん';
+  return sec + 'びょう';
+}
 // バトル中は そうびスロット番号でひく
 function powOf(slot) { const it = slotInst(slot); return it ? powOfInst(it) : 1; }
 function cdOf(slot) { const it = slotInst(slot); return it ? cdOfInst(it) : 0; }
@@ -491,6 +520,9 @@ function initGame(saveStr) {
   }
   delete S.cards;
   if (!S.coreInv || typeof S.coreInv !== 'object') S.coreInv = {};
+  if (!S.armors || typeof S.armors !== 'object') S.armors = {};
+  if (S.armorEquip === undefined) S.armorEquip = null;
+  if (typeof S.playSec !== 'number') S.playSec = 0;
   if (!S.nextId) S.nextId = S.inv.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
   S.inv.forEach(x => { if (!Array.isArray(x.cores) || x.cores.length !== 3) x.cores = [null, null, null]; });
   // そうびの整合性 (存在しないID除去・かぶり除去・4こまで・からっぽなら自動そうび)
@@ -527,6 +559,7 @@ const SCREEN_TITLES = { deck: '🃏 デッキ', gacha: '🎰 ガチャ', market:
 function openScreen(kind) {
   closeDrawer();
   if (kind === 'deck') deckDetail = null;
+  if (kind === 'friends') profileView = null;
   screenKind = kind;
   screenTitle.textContent = SCREEN_TITLES[kind] || '';
   renderScreen();
@@ -597,6 +630,39 @@ function renderDeck() {
     es.appendChild(sl);
   }
   screenBody.appendChild(es);
+  // アーマー (もっていれば)
+  const armorKeys = Object.keys(ARMORS).filter(ownArmor);
+  if (armorKeys.length) {
+    const ah = document.createElement('div');
+    ah.className = 'sub'; ah.textContent = '― アーマー (ハートの見た目も かわる) ―';
+    screenBody.appendChild(ah);
+    armorKeys.forEach(k => {
+      const A = ARMORS[k];
+      const d = document.createElement('div');
+      d.className = 'dcard'; d.style.borderColor = A.col;
+      const on = S.armorEquip === k;
+      d.innerHTML = '<span class="nm" style="color:' + A.col + '">' + A.name + (on ? ' <span class="rr" style="color:' + A.col + '">そうび中</span>' : '') + '</span>' +
+        '<div class="sub">' + A.desc + '</div>';
+      const bt = document.createElement('button');
+      bt.className = 'wide'; bt.style.borderColor = A.col; bt.style.color = A.col;
+      bt.textContent = on ? 'はずす' : '▶ そうびする';
+      bt.addEventListener('click', () => {
+        S.armorEquip = on ? null : k;
+        if (S.armorEquip === 'crab') S.hp = Math.min(maxHP(), S.hp);
+        say(on ? '* ' + A.name + ' を はずした。' : '* ' + A.name + ' を そうびした!\n* まもる ときの ハートが かわるよ!');
+        hud(); save(); renderDeck();
+      });
+      d.appendChild(bt);
+      // ハートのプレビュー
+      const pv = document.createElement('canvas');
+      pv.width = 60; pv.height = 40; pv.style.cssText = 'width:60px;height:40px;image-rendering:pixelated;margin-top:4px';
+      const pc = pv.getContext('2d');
+      pc.fillStyle = '#0b1420'; pc.fillRect(0, 0, 60, 40);
+      drawHeart(30, 20, 7, A.col, k, pc);
+      d.appendChild(pv);
+      screenBody.appendChild(d);
+    });
+  }
   // ならべかえ
   const sr = document.createElement('div');
   sr.className = 'sortrow';
@@ -1228,8 +1294,77 @@ function sendInvite(name) {
   if (screenKind !== 'room') openScreen('room');
 }
 
+let profileView = null; // ひらいている フレンドの なまえ
+
+async function showProfile(name) {
+  profileView = name;
+  if (screenKind !== 'friends') return;
+  screenBody.innerHTML = '<div class="sub" style="padding:10px">' + name + ' の プロフィール よみこみちゅう…</div>';
+  let r;
+  try { r = await api('dm_profile', { p_token: token, p_name: name }); }
+  catch (e) { screenBody.innerHTML = '<div class="sub" style="padding:10px">つうしんエラー…</div>'; return; }
+  if (screenKind !== 'friends' || profileView !== name) return;
+  screenBody.innerHTML = '';
+  const back = document.createElement('button');
+  back.className = 'wide'; back.textContent = '← フレンドいちらんへ';
+  back.addEventListener('click', () => { profileView = null; renderFriends(); });
+  screenBody.appendChild(back);
+  if (!r.ok) {
+    const e0 = document.createElement('div'); e0.className = 'dcard';
+    e0.innerHTML = '<div class="sub">' + (r.msg || 'みられなかった…') + '</div>';
+    screenBody.appendChild(e0); return;
+  }
+  let P;
+  try { P = JSON.parse(r.save || '{}'); } catch (e) { P = {}; }
+  const inv = Array.isArray(P.inv) ? P.inv : [];
+  const equip = Array.isArray(P.equip) ? P.equip : [];
+  const armorKey = (P.armorEquip && ARMORS[P.armorEquip]) ? P.armorEquip : null;
+  const w = P.world || 1, v = P.wave || 1;
+  // ヘッダー: なまえ / プレイ時間 / しんちょく
+  const d0 = document.createElement('div');
+  d0.className = 'dcard'; d0.style.borderColor = '#7fd4ff';
+  d0.innerHTML =
+    '<span class="nm" style="color:#7fd4ff">' + name + '</span>' +
+    '<span class="rr" style="color:#c7dbe8">LV ' + (P.lv || 1) + '</span>' +
+    '<div>⏱ プレイ時間: ' + fmtPlay(P.playSec) + '</div>' +
+    '<div>📍 いま: WORLD ' + w + '「' + worldName(w) + '」 WAVE ' + v + '</div>' +
+    '<div>❤ さいだいHP: ' + ((P.maxhp || 20)) + ' / ⛃' + (P.coins || 0) + '</div>' +
+    '<div>🃏 もってる わざ: ' + inv.length + 'こ</div>';
+  screenBody.appendChild(d0);
+  // ハートの見た目 + アーマー
+  const dh = document.createElement('div');
+  dh.className = 'dcard'; dh.style.borderColor = armorKey ? ARMORS[armorKey].col : '#c9d4da';
+  dh.innerHTML = '<span class="nm">まもる ときの ハート</span>' +
+    '<div class="sub">' + (armorKey ? ARMORS[armorKey].name + ' そうび中' : 'ふつうの ハート (アーマーなし)') + '</div>';
+  const pv = document.createElement('canvas');
+  pv.width = 70; pv.height = 46; pv.style.cssText = 'width:70px;height:46px;image-rendering:pixelated;margin-top:4px';
+  const pc = pv.getContext('2d');
+  pc.fillStyle = '#0b1420'; pc.fillRect(0, 0, 70, 46);
+  drawHeart(35, 23, 8, armorKey ? ARMORS[armorKey].col : '#e24b4a', armorKey || 'normal', pc);
+  dh.appendChild(pv);
+  screenBody.appendChild(dh);
+  // そうびちゅうの デッキ (ぶき4わく)
+  const dd = document.createElement('div');
+  dd.className = 'dcard'; dd.style.borderColor = '#ffe97a';
+  dd.innerHTML = '<span class="nm" style="color:#ffe97a">そうびちゅうの デッキ</span>';
+  if (!equip.length) dd.innerHTML += '<div class="sub">ぶき なし</div>';
+  equip.forEach(id => {
+    const it = inv.find(x => x.id === id);
+    if (!it || !cards[it.c]) return;
+    const c = cards[it.c];
+    const row = document.createElement('div');
+    row.className = 'frow';
+    const coreN = (it.cores || []).filter(Boolean).length;
+    row.innerHTML = '<span class="fname" style="color:' + RAR[c.rar].col + '">' + c.name + '</span>' +
+      '<span class="sub">LV' + it.lv + (coreN ? ' / コア' + coreN : '') + '</span>';
+    dd.appendChild(row);
+  });
+  screenBody.appendChild(dd);
+}
+
 async function renderFriends() {
   if (screenKind !== 'friends') return;
+  if (profileView) { showProfile(profileView); return; }
   screenBody.innerHTML = '<div class="sub" style="padding:10px">よみこみちゅう…</div>';
   let r;
   try { r = await api('dm_friends', { p_token: token }); }
@@ -1290,9 +1425,13 @@ async function renderFriends() {
     const on = isOnline(nm);
     const row = document.createElement('div');
     row.className = 'frow';
-    row.innerHTML = '<span class="fname">' + nm + '</span><span class="' + (on ? 'on' : 'off') + '">●' + (on ? 'オンライン' : 'オフライン') + '</span>';
+    row.innerHTML = '<span class="fname">' + nm + '</span><span class="' + (on ? 'on' : 'off') + '">●' + (on ? 'オン' : 'オフ') + '</span>';
+    const pf = document.createElement('button');
+    pf.className = 'fbtn'; pf.textContent = '👤';
+    pf.addEventListener('click', () => showProfile(nm));
+    row.appendChild(pf);
     const iv = document.createElement('button');
-    iv.className = 'fbtn gold'; iv.textContent = '⚔ しょうたい';
+    iv.className = 'fbtn gold'; iv.textContent = '⚔';
     iv.disabled = !on;
     if (!on) iv.style.opacity = .4;
     iv.addEventListener('click', () => sendInvite(nm));
@@ -1393,7 +1532,7 @@ function battleFields() {
     hitPt: null, hitCol: '#fff', hitBig: false, dmgTxt: '', dmgT: 0,
     bigTxt: '', bigCol: '#fff', bigT: 0,
     atks: [], defEndT: -1, ink: false, inkT: 0, guard: 0,
-    ringR: 0,
+    ringR: 0, armorAt: 0, armorFxT: 0,
     cds: [0, 0, 0, 0],
     rushT: 0, rushDmg: 0, rushTaps: 0, rushTapFx: []
   };
@@ -1438,6 +1577,17 @@ function winBattle() {
     say(dlg.textContent + '\n* 大ダコ「みごとじゃ…! このシティは\n  おぬしに まかせたぞ……」\n* WORLD ' + (S.world - 1) + '「' + worldName(S.world - 1) + '」クリア!!');
   } else if (b.boss) {
     say(dlg.textContent + '\n* ボスを たおした!');
+  }
+  // カニボス: 1/30で クラブアーマー ドロップ
+  if (b.boss && b.key === 'kani' && rnd(30) === 0) {
+    if (!ownArmor('crab')) {
+      S.armors.crab = true;
+      if (!S.armorEquip) S.armorEquip = 'crab';
+      say(dlg.textContent + '\n* ✨ レアドロップ!! 「クラブアーマー」を てにいれた!!\n* メニュー→デッキ で そうび / はずせるよ');
+    } else {
+      S.coins += 200;
+      say(dlg.textContent + '\n* クラブアーマー(ダブり)… ⛃200 に かえた!');
+    }
   }
   if (progOf(S.world, S.wave) > S.bestProg) S.bestProg = progOf(S.world, S.wave);
   S.hp = maxHP();
@@ -1545,6 +1695,10 @@ cv.addEventListener('click', e => {
       if (MP && MP.p) mpReady();
       else if (MP) say('* まだ あいてが いない!\n* あいことば「' + MP.code + '」を おしえてあげよう');
       else startBattle();
+    } else if (mx > WNL.x && mx < WNL.x + WNL.w && my > WNL.y && my < WNL.y + WNL.h) {
+      moveWave(-1); // まえの WAVE へ もどる
+    } else if (mx > WNR.x && mx < WNR.x + WNR.w && my > WNR.y && my < WNR.y + WNR.h) {
+      moveWave(1);  // さきの WAVE へ (いちばん さきまで)
     }
     return;
   }
@@ -1809,11 +1963,20 @@ function startDefend() {
       addCharge(Math.min(4, (boss ? 3 : 2) + Math.floor(L / 12)), 0);
       msg = '* サメの とっしん! おおきな丸を タップして とめろ!';
       break;
-    case 'spin8': // 大ダコ: タコの通常攻撃 + 回転触手
-      addTents(4, 0);
-      b.ink = Math.random() < 0.5;
-      addSpin();
-      msg = '* 大ダコ「うずまき 8れんだ じゃーー!!」\n* かいてん触手は 3かい タップで こわせ!';
+    case 'spin8': // 大ダコ: 「通常ターン」と「回転ターン」を ランダムで きりかえ
+      if (Math.random() < 0.5) {
+        // 回転ターン: 8本の触手が 回転しながら 中心へ
+        addSpin();
+        b.ink = Math.random() < 0.35;
+        // 回転のときは トゲ(角)が 1/5の かくりつで とんでくる
+        if (Math.random() < 0.2) { addSpikes(3, 0); msg = '* 大ダコ「うずまき + トゲ じゃーー!!」\n* かいてん触手は 3タップ、トゲも よけろ!'; }
+        else msg = '* 大ダコ「うずまき 8れんだ じゃーー!!」\n* かいてん触手は 3かい タップで こわせ!';
+      } else {
+        // 通常ターン: ふつうのタコの触手こうげき
+        addTents(Math.min(7, 4 + Math.floor(L / 6)), 0);
+        b.ink = Math.random() < 0.55;
+        msg = '* 大ダコ「ワシの うでを あじわえ!」\n* 丸を タップして 触手を こわせ!';
+      }
       break;
   }
   b.inkT = b.ink ? 26 : 0;
@@ -1826,6 +1989,17 @@ function strike(b, a) {
   if (b.over) return;
   const roll = b.atkMin + rnd(b.atkMax - b.atkMin + 1);
   const ed = Math.max(1, Math.round(roll * (a.dmgF || 1) * (1 - (b.guard || 0))));
+  // クラブアーマー: 3びょうに1かい こうげきを むこうか → ダメージの1/5をHPきゅうしゅう
+  if (equippedArmor() === 'crab' && anim >= (b.armorAt || 0)) {
+    b.armorAt = anim + 180; // 3びょう(60fps)クールダウン
+    b.armorFxT = 18;
+    const absorb = Math.max(1, Math.round(ed / 5));
+    S.hp = Math.min(maxHP(), S.hp + absorb);
+    hud();
+    mpSend('hurt', { dmg: 0, hp: S.hp });
+    say('* クラブアーマー はつどう!\n* こうげきを むこうか! HPを ' + absorb + ' きゅうしゅう!');
+    return;
+  }
   S.hp = Math.max(0, S.hp - ed);
   b.hurtT = 12; b.heartHitT = 14;
   hud();
@@ -1920,15 +2094,49 @@ function roundBar(x, y, w, h, ratio, back, front) {
   cx.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
 }
 
-function drawHeart(x, y, size, col) {
-  cx.fillStyle = col;
+function drawHeartShape(g, x, y, s, col) {
+  g.fillStyle = col;
+  g.fillRect(x - s, y - s * 0.6, s * 0.8, s * 0.8);
+  g.fillRect(x + s * 0.2, y - s * 0.6, s * 0.8, s * 0.8);
+  g.fillRect(x - s, y - s * 0.2, s * 2, s * 0.8);
+  g.beginPath();
+  g.moveTo(x - s, y + s * 0.5); g.lineTo(x, y + s * 1.2); g.lineTo(x + s, y + s * 0.5);
+  g.fill();
+}
+// skin = 'normal' | 'crab' | ... (装備アーマーで 見た目がかわる)。g を わたせば べつキャンバスにも かける
+function drawHeart(x, y, size, col, skin, g) {
+  g = g || cx;
+  skin = skin || 'normal';
   const s = size;
-  cx.fillRect(x - s, y - s * 0.6, s * 0.8, s * 0.8);
-  cx.fillRect(x + s * 0.2, y - s * 0.6, s * 0.8, s * 0.8);
-  cx.fillRect(x - s, y - s * 0.2, s * 2, s * 0.8);
-  cx.beginPath();
-  cx.moveTo(x - s, y + s * 0.5); cx.lineTo(x, y + s * 1.2); cx.lineTo(x + s, y + s * 0.5);
-  cx.fill();
+  if (skin === 'crab') {
+    // カニっぽいハート: 甲羅ハート + ハサミ + あし + めだま
+    const sw = Math.sin(anim / 6) * s * 0.16;
+    g.strokeStyle = col; g.lineWidth = Math.max(1, s * 0.28);
+    // あし (両側3本ずつ)
+    for (let i = 0; i < 3; i++) {
+      const yy = y - s * 0.1 + i * s * 0.42;
+      g.beginPath(); g.moveTo(x - s * 0.9, yy); g.lineTo(x - s * 1.7, yy + s * 0.3 + sw); g.stroke();
+      g.beginPath(); g.moveTo(x + s * 0.9, yy); g.lineTo(x + s * 1.7, yy + s * 0.3 - sw); g.stroke();
+    }
+    g.lineWidth = 1;
+    // ハサミ (上の左右)
+    g.fillStyle = col;
+    [[-1, sw], [1, -sw]].forEach(d => {
+      const cxp = x + d[0] * (s * 1.55), cyp = y - s * 0.55 + d[1];
+      g.beginPath(); g.arc(cxp, cyp, s * 0.5, 0, 7); g.fill();
+      g.fillStyle = '#03050f';
+      g.fillRect(cxp - s * 0.15, cyp - s * 0.5, s * 0.3, s * 0.45 * (anim % 30 < 15 ? 1 : 0.4));
+      g.fillStyle = col;
+    });
+    // 甲羅ハート本体
+    drawHeartShape(g, x, y, s, col);
+    // 目
+    g.fillStyle = '#03050f';
+    g.fillRect(x - s * 0.45, y - s * 0.25, s * 0.28, s * 0.28);
+    g.fillRect(x + s * 0.18, y - s * 0.25, s * 0.28, s * 0.28);
+  } else {
+    drawHeartShape(g, x, y, s, col);
+  }
 }
 
 function drawSeaBg() {
@@ -2358,8 +2566,23 @@ function drawBattle() {
     updateDefend(b);
     if (!battle) return;
     const beat = 1 + (anim % 40 < 6 ? 0.25 : 0);
-    drawHeart(HX, HY, 6 * beat, b.heartHitT > 0 && b.heartHitT % 4 < 2 ? '#fff' : '#e24b4a');
+    const hcol = b.heartHitT > 0 && b.heartHitT % 4 < 2 ? '#fff'
+               : (b.armorFxT > 0 ? '#f0654a' : '#e24b4a');
+    drawHeart(HX, HY, 6 * beat, hcol, heartSkin());
     if (b.heartHitT > 0) b.heartHitT--;
+    // クラブアーマー: きゅうしゅう チャージ表示
+    if (equippedArmor() === 'crab') {
+      const ready = anim >= (b.armorAt || 0);
+      cx.strokeStyle = ready ? '#f0654a' : 'rgba(240,101,74,.35)';
+      cx.lineWidth = ready && anim % 20 < 10 ? 2 : 1;
+      cx.beginPath(); cx.arc(HX, HY, 18, 0, 7); cx.stroke();
+      cx.lineWidth = 1;
+      if (b.armorFxT > 0) {
+        b.armorFxT--;
+        cx.fillStyle = 'rgba(240,101,74,' + (b.armorFxT / 18 * 0.4) + ')';
+        cx.beginPath(); cx.arc(HX, HY, 22 - b.armorFxT, 0, 7); cx.fill();
+      }
+    }
     if (b.guard > 0) {
       const gp = 1 + Math.sin(anim / 7) * 0.1;
       cx.strokeStyle = 'rgba(127,212,255,' + (0.5 + Math.sin(anim / 5) * 0.2) + ')';
@@ -2461,8 +2684,19 @@ function drawInter() {
   cx.fillStyle = '#f5f2e9'; cx.font = 'bold 22px monospace';
   cx.fillText('WAVE ' + S.wave + '/' + WAVES_PER_WORLD, 96, 156);
   const bw = Math.floor((S.bestProg - 1) / WAVES_PER_WORLD) + 1, bv = ((S.bestProg - 1) % WAVES_PER_WORLD) + 1;
+  // WAVE いどう ◀ ▶ (さいこうまで もどったり すすんだり)
+  const canL = progOf(S.world, S.wave) > 1, canR = progOf(S.world, S.wave) < S.bestProg;
+  cx.font = 'bold 20px monospace'; cx.textAlign = 'center';
+  cx.fillStyle = canL ? '#7fd4ff' : 'rgba(127,212,255,.2)';
+  cx.fillText('◀', WNL.x + WNL.w / 2, 162);
+  cx.fillStyle = canR ? '#7fd4ff' : 'rgba(127,212,255,.2)';
+  cx.fillText('▶', WNR.x + WNR.w / 2, 162);
   cx.fillStyle = '#ffe97a'; cx.font = '10px monospace';
   cx.fillText('さいこう: WORLD ' + bw + ' - WAVE ' + bv, 96, 180);
+  if (progOf(S.world, S.wave) < S.bestProg) {
+    cx.fillStyle = '#92b4c4'; cx.font = '8px monospace';
+    cx.fillText('(◀▶で いった WAVEに もどれる)', 96, 191);
+  }
   if (isBossWave(S.wave)) {
     cx.fillStyle = '#e24b4a'; cx.font = 'bold 11px monospace';
     if (anim % 60 < 36) {

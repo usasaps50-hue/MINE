@@ -240,6 +240,28 @@ begin
   );
 end $$;
 
+-- フレンドの プロフィール(セーブ)を みる。フレンドどうしのみ
+create or replace function public.dm_profile(p_token uuid, p_name text)
+returns jsonb
+language plpgsql security definer set search_path = public, extensions
+as $$
+declare
+  v_me uuid; v_tgt uuid; v_save text;
+begin
+  v_me := dm_sess_(p_token);
+  if v_me is null then return jsonb_build_object('ok', false, 'msg', 'セッションぎれ'); end if;
+  select id, save into v_tgt, v_save from dm_accounts where username = trim(coalesce(p_name, ''));
+  if not found then return jsonb_build_object('ok', false, 'msg', 'いない…'); end if;
+  if v_tgt <> v_me and not exists (
+    select 1 from dm_friends
+    where ((a_id = v_me and b_id = v_tgt) or (a_id = v_tgt and b_id = v_me)) and status = 'ok'
+  ) then
+    return jsonb_build_object('ok', false, 'msg', 'フレンドじゃ ないと みれない');
+  end if;
+  return jsonb_build_object('ok', true, 'save', coalesce(v_save, ''));
+end $$;
+
 grant execute on function public.dm_friend_request(uuid, text)           to anon, authenticated;
 grant execute on function public.dm_friend_respond(uuid, text, boolean)  to anon, authenticated;
 grant execute on function public.dm_friends(uuid)                        to anon, authenticated;
+grant execute on function public.dm_profile(uuid, text)                  to anon, authenticated;

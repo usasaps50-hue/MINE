@@ -17,6 +17,7 @@ GitHub Pages + Supabase で動くカードバトルゲーム。
 
 1. https://supabase.com で無料アカウントを作り、新しいプロジェクトを作る
 2. 左メニュー **SQL Editor** → `schema.sql` の中身を全部貼りつけて **Run**
+   （フレンド機能やプロフィール閲覧を追加したときは、更新後の `schema.sql` を**もう一度全部貼って Run**すればOK。再実行しても既存データは消えない）
 3. 左メニュー **Settings → API** を開き、
    - **Project URL**
    - **anon public** キー
