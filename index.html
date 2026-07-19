@@ -71,17 +71,50 @@
   .card.item { border-color: #f7a8c4; }
   .card.item:disabled { opacity: .35; }
 
-  #menu, #mainMenu { display: none; grid-template-columns: 1fr; gap: 6px; margin-top: 6px; }
-  #mainMenu { grid-template-columns: 1fr 1fr; }
-  button.pbtn { font-family: inherit; font-size: 12px; line-height: 1.5; padding: 12px 4px;
+  button.pbtn { font-family: inherit; font-size: 13px; line-height: 1.5; padding: 13px 8px; text-align: left;
           background: linear-gradient(#152741, #0d1628); color: #fff; border: 2px solid #fff; border-radius: 8px; }
   button.pbtn:active { background: #2a4363; transform: translateY(1px); }
-  #fightBtn { border-color: #ffe97a; color: #ffe97a; box-shadow: 0 0 10px rgba(255,233,122,.2); }
-  #mpBtn { border-color: #7fd4ff; color: #7fd4ff; }
   .sub { font-size: 11px; color: #92b4c4; }
 
-  /* デッキ / ガチャ / マルチ */
-  #deck, #gacha, #mp { display: none; margin-top: 6px; }
+  /* ===== 右からふわっと出るメニュー (ドロワー) ===== */
+  #scrim { position: fixed; inset: 0; background: rgba(0,0,0,.55); opacity: 0; pointer-events: none;
+           transition: opacity .25s; z-index: 40; }
+  #scrim.on { opacity: 1; pointer-events: auto; }
+  #drawer { position: fixed; top: 0; right: 0; width: 216px; height: 100dvh; z-index: 50;
+            background: linear-gradient(#0d1c33, #0a0f1e); border-left: 2px solid #7fd4ff;
+            box-shadow: -8px 0 30px rgba(0,0,0,.6); padding: 18px 12px calc(18px + env(safe-area-inset-bottom));
+            display: flex; flex-direction: column; gap: 9px;
+            transform: translateX(105%); transition: transform .28s cubic-bezier(.2,.8,.3,1); }
+  #drawer.open { transform: translateX(0); }
+  #drawer .dttl { font-size: 12px; color: #7fd4ff; letter-spacing: 2px; margin-bottom: 4px; }
+
+  /* ===== フルスクリーンの切りかえ画面 ===== */
+  #screen { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;
+            background: radial-gradient(ellipse at 50% -10%, #0d2440 0%, #0a0612 60%) #0a0612;
+            transform: translateX(100%); transition: transform .28s cubic-bezier(.2,.8,.3,1); }
+  #screen.open { transform: translateX(0); }
+  #screenHead { display: flex; align-items: center; gap: 10px; padding: 12px 12px 8px;
+                max-width: 420px; margin: 0 auto; width: 100%; }
+  #screenBack { font-family: inherit; font-size: 12px; padding: 8px 12px; border-radius: 6px;
+                background: linear-gradient(#1d2f4d, #111a30); color: #ffe97a; border: 1px solid #ffe97a; }
+  #screenBack:active { background: #2a4363; }
+  #screenTitle { font-size: 15px; font-weight: bold; color: #f5f2e9; letter-spacing: 2px; }
+  #screenBody { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+                padding: 4px 12px calc(30px + env(safe-area-inset-bottom)); max-width: 420px; margin: 0 auto; width: 100%; }
+  #screenBody input { width: 100%; font-family: inherit; font-size: 15px; padding: 9px 12px; margin-top: 6px;
+              background: #0b1420; color: #fff; border: 2px solid #1c3b63; border-radius: 6px; outline: none; }
+  #screenBody input.code { letter-spacing: 6px; text-align: center; font-size: 16px; }
+
+  /* ===== しょうたい通知 ===== */
+  #invite { position: fixed; inset: 0; z-index: 70; display: none; align-items: center; justify-content: center;
+            background: rgba(0,0,0,.6); padding: 20px; }
+  #invite.on { display: flex; }
+  #invBox { background: #0d1c33; border: 2px solid #ffe97a; border-radius: 10px; padding: 18px 16px;
+            max-width: 320px; width: 100%; box-shadow: 0 0 30px rgba(255,233,122,.3); }
+  #invText { font-size: 13px; line-height: 1.8; white-space: pre-line; margin-bottom: 12px; }
+  #invBox .grow2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  /* デッキ / ガチャ / フレンド / へや (フルスクリーン内で使う部品) */
   .dcard { border: 2px solid #c9d4da; border-left-width: 6px; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px;
            background: rgba(0,0,0,.5); font-size: 12px; line-height: 1.6; }
   .dcard .nm { font-weight: bold; font-size: 13px; }
@@ -95,11 +128,17 @@
   .wide.blue { border-color: #7fd4ff; color: #7fd4ff; }
   .coretag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 4px;
              background: rgba(127,212,255,.15); border: 1px solid #7fd4ff; color: #7fd4ff; margin: 2px 4px 0 0; }
-  #mp input { width: 100%; font-family: inherit; font-size: 16px; padding: 9px 12px; margin-top: 6px;
-              background: #0b1420; color: #fff; border: 2px solid #1c3b63; border-radius: 6px; outline: none;
-              letter-spacing: 6px; text-align: center; }
   .roomcode { font-size: 26px; font-weight: bold; color: #ffe97a; letter-spacing: 8px; text-align: center;
               text-shadow: 0 0 12px rgba(255,233,122,.6); margin: 6px 0; }
+  .frow { display: flex; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 1px dashed rgba(255,255,255,.15); font-size: 13px; }
+  .frow .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .frow .on { color: #97c459; font-size: 10px; }
+  .frow .off { color: #667; font-size: 10px; }
+  .fbtn { font-family: inherit; font-size: 11px; padding: 6px 9px; border-radius: 6px;
+          background: linear-gradient(#152741, #0d1628); color: #fff; border: 1px solid #fff; }
+  .fbtn:active { background: #2a4363; }
+  .fbtn.gold { border-color: #ffe97a; color: #ffe97a; }
+  .fbtn.red { border-color: #f09595; color: #f09595; }
 </style>
 </head>
 <body>
@@ -130,17 +169,34 @@
     <div id="dlg">* ...</div>
     <div id="hand"></div>
     <div id="items"></div>
-    <div id="menu"><button class="pbtn" id="fightBtn">▶ たたかう</button></div>
-    <div id="mainMenu">
-      <button class="pbtn" id="deckBtn">デッキ</button>
-      <button class="pbtn" id="gachaBtn">ガチャ</button>
-      <button class="pbtn" id="mpBtn">きょうりょくバトル</button>
-      <button class="pbtn" id="logoutBtn">ログアウト</button>
-      <button class="pbtn" id="closeMenuBtn">とじる</button>
+  </div>
+</div>
+
+<div id="scrim"></div>
+<div id="drawer">
+  <div class="dttl">☰ メニュー</div>
+  <button class="pbtn" data-scr="deck">🃏 デッキ</button>
+  <button class="pbtn" data-scr="gacha">🎰 ガチャ</button>
+  <button class="pbtn" data-scr="friends">👥 フレンド</button>
+  <button class="pbtn" data-scr="room">⚔ きょうりょくバトル</button>
+  <button class="pbtn" id="logoutBtn">🚪 ログアウト</button>
+</div>
+
+<div id="screen">
+  <div id="screenHead">
+    <button id="screenBack">← もどる</button>
+    <span id="screenTitle"></span>
+  </div>
+  <div id="screenBody"></div>
+</div>
+
+<div id="invite">
+  <div id="invBox">
+    <div id="invText"></div>
+    <div class="grow2">
+      <button class="fbtn gold" id="invYes">▶ はいる</button>
+      <button class="fbtn" id="invNo">ことわる</button>
     </div>
-    <div id="deck"></div>
-    <div id="gacha"></div>
-    <div id="mp"></div>
   </div>
 </div>
 
@@ -172,11 +228,13 @@ function fitCanvas() {
 new ResizeObserver(fitCanvas).observe(cvbox);
 window.addEventListener('resize', fitCanvas);
 const dlg = document.getElementById('dlg'), hand = document.getElementById('hand');
-const menu = document.getElementById('menu'), mainMenu = document.getElementById('mainMenu');
-const deckEl = document.getElementById('deck'), gachaEl = document.getElementById('gacha');
-const mpEl = document.getElementById('mp'), itemsEl = document.getElementById('items');
+const itemsEl = document.getElementById('items');
+const drawer = document.getElementById('drawer'), scrim = document.getElementById('scrim');
+const screenEl = document.getElementById('screen'), screenBody = document.getElementById('screenBody');
+const screenTitle = document.getElementById('screenTitle');
 const hudL = document.getElementById('hudL'), hudR = document.getElementById('hudR');
 const dot = document.getElementById('dot');
+let screenKind = null;
 
 // ---- Supabase ----
 let sb = null;
@@ -197,6 +255,9 @@ let pollBusy = false, failCount = 0;
 function kickToLogin(msg) {
   token = null;
   mpLeave(true);
+  leavePersonal();
+  closeScreen(); closeDrawer();
+  document.getElementById('invite').classList.remove('on');
   document.getElementById('wrap').style.display = 'none';
   document.getElementById('login').style.display = 'block';
   document.getElementById('loginMsg').innerHTML = msg ? '<span class="heart"></span>' + msg : '';
@@ -262,16 +323,20 @@ const RAR = {
   SR: { name: 'エピック',   col: '#c06af0' },
   UR: { name: 'レジェンド', col: '#ffd447' }
 };
+// starter: true の3まいが さいしょから もっているカード。のこりは ガチャで手にいれる
 const cards = [
-  { name: 'スラッシュ', base: 8,  spd: 2.2, sweet: [0.5, 0.5], rar: 'N',  cd: 0, type: 'atk',  desc: 'まんなかが つよい' },
+  { name: 'スラッシュ', base: 8,  spd: 2.2, sweet: [0.5, 0.5], rar: 'N',  cd: 0, type: 'atk',  desc: 'まんなかが つよい', starter: true },
   { name: 'メテオ',     base: 14, spd: 3.6, sweet: [0.5, 0.5], rar: 'R',  cd: 1, type: 'atk',  desc: 'はやいけど ばかぢから' },
   { name: 'トリック',   base: 11, spd: 1.8, sweet: [0.8, 0.2], rar: 'R',  cd: 1, type: 'atk',  desc: 'みぎうえが きゅうしょ' },
   { name: 'ヒール',     base: 12, spd: 2.4, sweet: [0.5, 0.5], rar: 'SR', cd: 3, type: 'heal', desc: 'HPを かいふく' },
   { name: 'ラッシュ',   base: 10,                             rar: 'UR', cd: 4, type: 'rush', desc: '5びょう れんだ!' },
   { name: 'つらぬき',   base: 11, spd: 2.6, sweet: [0.2, 0.8], rar: 'R',  cd: 1, type: 'atk',  desc: 'ひだりしたが きゅうしょ' },
   { name: 'うずしお',   base: 13, spd: 3.2, sweet: [0.65, 0.65], rar: 'SR', cd: 2, type: 'atk', desc: 'みぎしたの うずを ねらえ' },
-  { name: 'シールド',   base: 8,  spd: 2.4, sweet: [0.5, 0.5], rar: 'SR', cd: 3, type: 'guard', desc: 'つぎの こうげきを ガード' }
+  { name: 'シールド',   base: 8,  spd: 2.4, sweet: [0.5, 0.5], rar: 'SR', cd: 3, type: 'guard', desc: 'つぎの こうげきを ガード' },
+  { name: 'たいあたり', base: 6,  spd: 1.8, sweet: [0.5, 0.5], rar: 'N',  cd: 0, type: 'atk',  desc: 'きほんの いちげき', starter: true },
+  { name: 'プチヒール', base: 10, spd: 2.2, sweet: [0.5, 0.5], rar: 'N',  cd: 2, type: 'heal', desc: 'HPを 10 かいふく', starter: true }
 ];
+const GACHA_COST = 80;
 const REVIVE_CARD = { name: 'ふっかつ', spd: 2.8, sweet: [0.5, 0.5], rar: 'SR', type: 'revive', desc: 'ジャストで あいてを ふっかつ!' };
 const MAX_CLV = 30;
 const CORE_UNLOCK = [10, 20, 30];
@@ -290,6 +355,7 @@ let anim = 0;
 
 const BX = 26, BY = 100, BW = 140, BH = 136;
 const HX = 96, HY = BY + BH / 2;
+const FB = { x: 36, y: 262, w: 120, h: 42 }; // キャンバス内「たたかう」ボタン
 const WAVES_PER_WORLD = 30;
 const WORLD_NAMES = ['すいちゅうシティ'];
 function worldName(w) { return WORLD_NAMES[w - 1] || '??? のせかい'; }
@@ -368,54 +434,62 @@ function initGame(saveStr) {
   if (!S.bestProg || S.bestProg < progOf(S.world, S.wave)) S.bestProg = progOf(S.world, S.wave);
   // カードデータ移行/初期化
   if (!Array.isArray(S.cards)) {
-    const old = Array.isArray(S.ups) ? S.ups : [0, 0, 0];
-    S.cards = cards.map((c, i) => ({
-      lv: Math.min(MAX_CLV, 1 + (old[i] || 0) * 2),
-      cores: [null, null, null]
-    }));
+    // 新規アカウント: スターター3まいだけ もっている
+    S.cards = cards.map(c => ({ lv: 1, cores: [null, null, null], own: !!c.starter }));
   }
   // カードが増えたら育成を残したまま追加分だけ足す
-  while (S.cards.length < cards.length) S.cards.push({ lv: 1, cores: [null, null, null] });
+  while (S.cards.length < cards.length) {
+    S.cards.push({ lv: 1, cores: [null, null, null], own: !!cards[S.cards.length].starter });
+  }
   S.cards.length = cards.length;
+  // むかしのセーブ (ownなし) は 全カードもち あつかい
+  S.cards.forEach(c => { if (c.own === undefined) c.own = true; });
   S.cards.forEach(c => { if (!Array.isArray(c.cores) || c.cores.length !== 3) c.cores = [null, null, null]; });
   delete S.ups;
   S.hp = maxHP();
   mode = 'inter'; battle = null;
-  showPanel('menu');
+  showPanel('none');
+  closeScreen(); closeDrawer();
+  joinPersonal();
   hud();
   say('* おかえり ' + userName + '。\n* WORLD ' + S.world + '「' + worldName(S.world) + '」\n  WAVE ' + S.wave + ' から さいかいだ。');
 }
 
-// ---- パネル切りかえ ----
+// ---- パネル切りかえ (バトル中の手札/アイテムだけ) ----
 function showPanel(which) {
   hand.style.display = which === 'hand' ? 'grid' : 'none';
-  itemsEl.style.display = (which === 'hand' && MP && MP.p) ? 'grid' : 'none';
-  menu.style.display = which === 'menu' ? 'grid' : 'none';
-  mainMenu.style.display = which === 'main' ? 'grid' : 'none';
-  deckEl.style.display = which === 'deck' ? 'block' : 'none';
-  gachaEl.style.display = which === 'gacha' ? 'block' : 'none';
-  mpEl.style.display = which === 'mp' ? 'block' : 'none';
+  itemsEl.style.display = which === 'hand' ? 'grid' : 'none';
   if (which === 'hand') renderItems();
 }
 
+// ---- ドロワー (右からふわっと出るメニュー) ----
+function openDrawer() { drawer.classList.add('open'); scrim.classList.add('on'); }
+function closeDrawer() { drawer.classList.remove('open'); scrim.classList.remove('on'); }
 document.getElementById('menuBtn').addEventListener('click', () => {
   if (mode === 'battle') { say('* たたかいちゅうは ひらけない!'); return; }
-  if (mainMenu.style.display === 'grid' || deckEl.style.display === 'block'
-      || gachaEl.style.display === 'block' || mpEl.style.display === 'block') {
-    showPanel(MP ? 'mp' : 'menu');
-    if (MP) renderMp();
-  } else {
-    showPanel('main');
-  }
+  drawer.classList.contains('open') ? closeDrawer() : openDrawer();
 });
-document.getElementById('closeMenuBtn').addEventListener('click', () => { showPanel(MP ? 'mp' : 'menu'); if (MP) renderMp(); });
-document.getElementById('deckBtn').addEventListener('click', () => { renderDeck(); showPanel('deck'); });
-document.getElementById('gachaBtn').addEventListener('click', () => { renderGacha(); showPanel('gacha'); });
-document.getElementById('mpBtn').addEventListener('click', () => { renderMp(); showPanel('mp'); });
-document.getElementById('fightBtn').addEventListener('click', () => {
-  if (mode !== 'inter' || !token) return;
-  startBattle();
-});
+scrim.addEventListener('click', closeDrawer);
+
+// ---- フルスクリーン画面 ----
+const SCREEN_TITLES = { deck: '🃏 デッキ', gacha: '🎰 ガチャ', friends: '👥 フレンド', room: '⚔ きょうりょくバトル' };
+function openScreen(kind) {
+  closeDrawer();
+  screenKind = kind;
+  screenTitle.textContent = SCREEN_TITLES[kind] || '';
+  renderScreen();
+  screenEl.classList.add('open');
+}
+function closeScreen() { screenEl.classList.remove('open'); screenKind = null; }
+function renderScreen() {
+  if (screenKind === 'deck') renderDeck();
+  else if (screenKind === 'gacha') renderGacha();
+  else if (screenKind === 'friends') renderFriends();
+  else if (screenKind === 'room') renderMp();
+}
+document.getElementById('screenBack').addEventListener('click', closeScreen);
+drawer.querySelectorAll('[data-scr]').forEach(b =>
+  b.addEventListener('click', () => openScreen(b.dataset.scr)));
 
 // ---- デッキ画面 ----
 function coreTagsHtml(i) {
@@ -427,8 +501,9 @@ function coreTagsHtml(i) {
   return h || '<span class="sub">コアなし</span>';
 }
 function renderDeck() {
-  deckEl.innerHTML = '';
+  screenBody.innerHTML = '';
   cards.forEach((c, i) => {
+    if (!S.cards[i].own) return;
     const cl = S.cards[i];
     const r = RAR[c.rar];
     const d = document.createElement('div');
@@ -444,27 +519,64 @@ function renderDeck() {
       '<div>LV ' + cl.lv + '/' + MAX_CLV + '  |  ' + val + '  |  CD ' + cdOf(i) + 'ターン</div>' +
       '<div class="sub">' + c.desc + '</div>' +
       '<div>' + coreTagsHtml(i) + '</div>';
-    deckEl.appendChild(d);
+    screenBody.appendChild(d);
   });
   // アイテム欄 (デッキの下)
   const it = document.createElement('div');
   it.className = 'dcard';
   it.style.borderColor = '#f7a8c4';
   it.innerHTML =
-    '<span class="nm" style="color:#f7a8c4">アイテム: ふっかつ</span>' +
-    '<span class="rr" style="color:#f7a8c4">きょうりょく</span>' +
-    '<div class="sub">きょうりょくバトルちゅう あいてが ダウンしたら つかえる。\nバーを ジャスト(クリティカル)で とめると あいてが ふっかつ!</div>';
-  deckEl.appendChild(it);
-  const back = document.createElement('button');
-  back.className = 'wide'; back.textContent = 'もどる';
-  back.addEventListener('click', () => showPanel('main'));
-  deckEl.appendChild(back);
+    '<span class="nm" style="color:#f7a8c4">アイテム</span>' +
+    '<div class="sub">パス: こうげきせず みをまもる (いつでも)\nふっかつ: きょうりょくで あいてがダウンしたら。ジャストで ふっかつ!</div>';
+  screenBody.appendChild(it);
 }
 
-// ---- ガチャ画面 (レベルアップ & コア) ----
+// ---- ガチャ画面 (ガチャ + レベルアップ & コア) ----
+function doGacha() {
+  if (S.coins < GACHA_COST) { say('* ゴールドが たりない… (⛃' + GACHA_COST + ')'); return; }
+  S.coins -= GACHA_COST;
+  const pool = cards.map((c, i) => c.starter ? -1 : i).filter(i => i >= 0);
+  const i = pool[rnd(pool.length)];
+  const c = cards[i], cl = S.cards[i];
+  let msg;
+  if (!cl.own) {
+    cl.own = true;
+    msg = '* ✨ あたらしい わざ!\n* 「' + c.name + '」(' + RAR[c.rar].name + ') を おぼえた!!';
+  } else if (cl.lv < MAX_CLV) {
+    cl.lv++;
+    msg = '* 「' + c.name + '」が かぶった!\n* かわりに LV' + cl.lv + ' に レベルアップ!';
+  } else {
+    S.coins += Math.floor(GACHA_COST / 2);
+    msg = '* 「' + c.name + '」は もう LVMAX…\n* ⛃' + Math.floor(GACHA_COST / 2) + ' かえってきた。';
+  }
+  say(msg);
+  hud(); save(); renderGacha();
+}
 function renderGacha() {
-  gachaEl.innerHTML = '';
+  screenBody.innerHTML = '';
+  // ガチャをまわす
+  const g0 = document.createElement('div');
+  g0.className = 'dcard';
+  g0.style.borderColor = '#ffe97a';
+  g0.innerHTML = '<span class="nm" style="color:#ffe97a">🎰 わざガチャ</span>' +
+    '<div class="sub">あたらしい わざを ランダムで 1つ! かぶったら その わざが レベルアップ</div>';
+  const pb = document.createElement('button');
+  pb.className = 'wide gold';
+  pb.innerHTML = '▶ ガチャを まわす  <span class="sub">⛃' + GACHA_COST + ' (もってる ⛃' + S.coins + ')</span>';
+  pb.addEventListener('click', doGacha);
+  g0.appendChild(pb);
+  // まだ持ってないカードのシルエット
+  const un = cards.filter((c, i) => !S.cards[i].own);
+  if (un.length) {
+    const uv = document.createElement('div');
+    uv.className = 'sub'; uv.style.marginTop = '6px';
+    uv.innerHTML = 'まだ みつけてない わざ: ' + un.map(c => '<span style="color:' + RAR[c.rar].col + '">???(' + RAR[c.rar].name + ')</span>').join(' ');
+    g0.appendChild(uv);
+  }
+  screenBody.appendChild(g0);
+  // 強化ショップ (もっているカードだけ)
   cards.forEach((c, i) => {
+    if (!S.cards[i].own) return;
     const cl = S.cards[i];
     const r = RAR[c.rar];
     const d = document.createElement('div');
@@ -526,12 +638,8 @@ function renderGacha() {
       }
       break; // 1スロットずつ
     }
-    gachaEl.appendChild(d);
+    screenBody.appendChild(d);
   });
-  const back = document.createElement('button');
-  back.className = 'wide'; back.textContent = 'もどる';
-  back.addEventListener('click', () => showPanel('main'));
-  gachaEl.appendChild(back);
 }
 
 // ================================================================
@@ -573,19 +681,18 @@ function mpJoin(code, isHost) {
       mpSyncHp();
       say('* ' + names[0] + ' が へやに はいってきた!\n* ふたりとも「たたかう」で スタート!');
       renderMp();
-      if (mode === 'inter' && deckEl.style.display !== 'block' && gachaEl.style.display !== 'block') showPanel('mp');
     } else if (!names.length && MP.p) {
       MP.p = null; MP.ready = false;
       say('* あいてが へやから いなくなった…');
-      if (mode === 'battle') { battle = null; mode = 'inter'; S.hp = maxHP(); hud(); }
-      renderMp(); showPanel('mp');
+      if (mode === 'battle') { battle = null; mode = 'inter'; S.hp = maxHP(); hud(); showPanel('none'); }
+      renderMp();
     }
   });
   ch.on('broadcast', { event: 'evt' }, (m) => { if (MP && MP.ch === ch) onMpEvt(m.payload); });
   ch.subscribe((status) => {
     if (status === 'SUBSCRIBED') ch.track({ hp: S.hp, maxhp: maxHP(), lv: S.lv });
   });
-  renderMp(); showPanel('mp');
+  if (screenKind !== 'room') openScreen('room'); else renderMp();
 }
 
 function mpLeave(silent) {
@@ -593,18 +700,19 @@ function mpLeave(silent) {
     const ch = MP.ch;
     MP = null;
     try { ch.unsubscribe(); sb && sb.removeChannel(ch); } catch (e) {}
-    if (!silent) { say('* へやを でた。'); showPanel('main'); }
+    if (!silent) { say('* へやを でた。'); renderMp(); }
   }
 }
 
 function renderMp() {
-  mpEl.innerHTML = '';
+  if (screenKind !== 'room') return;
+  screenBody.innerHTML = '';
   const d = document.createElement('div');
   d.className = 'dcard';
   d.style.borderColor = '#7fd4ff';
   if (!MP) {
     d.innerHTML = '<span class="nm" style="color:#7fd4ff">きょうりょくバトル</span>' +
-      '<div class="sub">ふたりで おなじ てきを たおそう!\nHPは べつべつ。ダウンしたら「ふっかつ」で たすけあえ!</div>';
+      '<div class="sub">ふたりで おなじ てきを たおそう!\nHPは べつべつ。ダウンしたら「ふっかつ」で たすけあえ!\nフレンドがめんから しょうたいも できるよ!</div>';
     const mk = document.createElement('button');
     mk.className = 'wide blue'; mk.textContent = '▶ へやを つくる';
     mk.addEventListener('click', () => {
@@ -613,6 +721,7 @@ function renderMp() {
     });
     d.appendChild(mk);
     const inp = document.createElement('input');
+    inp.className = 'code';
     inp.maxLength = 4; inp.inputMode = 'numeric'; inp.placeholder = 'あいことば';
     d.appendChild(inp);
     const jn = document.createElement('button');
@@ -623,10 +732,6 @@ function renderMp() {
       mpJoin(code, false);
     });
     d.appendChild(jn);
-    const back = document.createElement('button');
-    back.className = 'wide'; back.textContent = 'もどる';
-    back.addEventListener('click', () => showPanel('main'));
-    d.appendChild(back);
   } else {
     d.innerHTML = '<span class="nm" style="color:#7fd4ff">へや</span>' +
       '<div class="roomcode">' + MP.code + '</div>' +
@@ -638,25 +743,22 @@ function renderMp() {
     if (MP.p) {
       const go = document.createElement('button');
       go.className = 'wide gold';
-      if (MP.ready) { go.textContent = 'あいてが「たたかう」を おすのを まってる…'; go.disabled = true; go.style.opacity = 0.6; }
-      else go.textContent = '▶ たたかう!';
+      const n = (MP.ready ? 1 : 0) + (MP.p.ready ? 1 : 0);
+      if (MP.ready) { go.textContent = 'あいてを まってる… (' + n + '/2)'; go.disabled = true; go.style.opacity = 0.6; }
+      else go.textContent = '▶ たたかう! (' + n + '/2)';
       go.addEventListener('click', mpReady);
       d.appendChild(go);
       const note = document.createElement('div');
       note.className = 'sub'; note.style.marginTop = '6px';
-      note.textContent = '※ ふたりとも「たたかう」で スタート。すすみが ひくいほうの WORLD/WAVE に あわせるよ';
+      note.textContent = '※ ふたりとも「たたかう」で スタート。すすみが ひくいほうの WORLD/WAVE に あわせるよ。ゲームがめんの たたかうボタンでもOK';
       d.appendChild(note);
     }
     const lv = document.createElement('button');
     lv.className = 'wide'; lv.textContent = 'へやを でる';
     lv.addEventListener('click', () => mpLeave(false));
     d.appendChild(lv);
-    const mn = document.createElement('button');
-    mn.className = 'wide'; mn.textContent = 'メニュー (デッキ/ガチャ)';
-    mn.addEventListener('click', () => showPanel('main'));
-    d.appendChild(mn);
   }
-  mpEl.appendChild(d);
+  screenBody.appendChild(d);
 }
 
 function mpReady() {
@@ -743,18 +845,38 @@ function onMpEvt(p) {
 
 function renderItems() {
   itemsEl.innerHTML = '';
-  if (!MP || !MP.p) return;
+  if (!battle) return;
   const lbl = document.createElement('div');
   lbl.className = 'itlbl';
   lbl.textContent = '― アイテム ―';
   itemsEl.appendChild(lbl);
-  const b = document.createElement('button');
-  b.className = 'card item';
-  b.innerHTML = '<span style="color:#f7a8c4">ふっかつ</span><span class="sub">' + REVIVE_CARD.desc + '</span><span class="atk">ジャストで せいこう</span>';
-  const usable = battle && battle.state === 'idle' && MP.p && MP.p.down;
-  b.disabled = !usable;
-  b.addEventListener('click', useRevive);
-  itemsEl.appendChild(b);
+  // パス: こうげきせず ターンをすすめる (クールダウンあけ待ちに)
+  const ps = document.createElement('button');
+  ps.className = 'card item';
+  ps.style.borderColor = '#92b4c4';
+  ps.innerHTML = '<span style="color:#c7dbe8">パス</span><span class="sub">こうげきしないで みをまもる</span><span class="atk">CDが すすむ</span>';
+  ps.disabled = !(battle && battle.state === 'idle');
+  ps.addEventListener('click', usePass);
+  itemsEl.appendChild(ps);
+  // ふっかつ (きょうりょくのみ)
+  if (MP && MP.p) {
+    const b = document.createElement('button');
+    b.className = 'card item';
+    b.innerHTML = '<span style="color:#f7a8c4">ふっかつ</span><span class="sub">' + REVIVE_CARD.desc + '</span><span class="atk">ジャストで せいこう</span>';
+    const usable = battle && battle.state === 'idle' && MP.p && MP.p.down;
+    b.disabled = !usable;
+    b.addEventListener('click', useRevive);
+    itemsEl.appendChild(b);
+  }
+}
+
+function usePass() {
+  const b = battle;
+  if (!b || b.state !== 'idle') return;
+  say('* いきを ととのえて みをまもる!\n* (この防御が おわると クールダウンが すすむ)');
+  b.card = null;
+  startDefend();
+  renderItems();
 }
 
 function useRevive() {
@@ -811,8 +933,156 @@ function doWipe() {
   say('* ふたりとも たおれてしまった…\n* ほしのちからで ふっかつ! (すすみは そのまま)');
   S.hp = maxHP();
   save(); hud();
-  if (MP) { MP.ready = false; if (MP.p) { MP.p.ready = false; MP.p.down = false; } renderMp(); showPanel('mp'); }
-  else showPanel('menu');
+  showPanel('none');
+  if (MP) { MP.ready = false; if (MP.p) { MP.p.ready = false; MP.p.down = false; } renderMp(); }
+  checkInvite();
+}
+
+// ================================================================
+// ==== フレンド / しょうたい ====
+// ================================================================
+let personalCh = null, onlineCh = null, pendingInvite = null;
+
+function joinPersonal() {
+  if (!sb || personalCh) return;
+  // 自分あての しょうたいを うけとるチャンネル
+  personalCh = sb.channel('dm-user-' + userName, { config: { broadcast: { self: false } } });
+  personalCh.on('broadcast', { event: 'invite' }, m => onInvite(m.payload));
+  personalCh.subscribe();
+  // オンライン状態の共有
+  onlineCh = sb.channel('dm-online', { config: { presence: { key: userName } } });
+  onlineCh.on('presence', { event: 'sync' }, () => { if (screenKind === 'friends') renderFriends(); });
+  onlineCh.subscribe(st => { if (st === 'SUBSCRIBED') onlineCh.track({ lv: S.lv }); });
+}
+function leavePersonal() {
+  try { if (personalCh) sb.removeChannel(personalCh); } catch (e) {}
+  try { if (onlineCh) sb.removeChannel(onlineCh); } catch (e) {}
+  personalCh = null; onlineCh = null; pendingInvite = null;
+}
+function isOnline(name) {
+  return !!(onlineCh && onlineCh.presenceState()[name]);
+}
+
+function onInvite(p) {
+  if (!p || !p.from || !p.code) return;
+  if (mode === 'battle') { pendingInvite = p; return; } // バトルおわりに知らせる
+  showInvite(p);
+}
+function checkInvite() {
+  if (pendingInvite) {
+    const p = pendingInvite; pendingInvite = null;
+    say(dlg.textContent + '\n* しょうたいが きています!');
+    showInvite(p);
+  }
+}
+const inviteEl = document.getElementById('invite');
+function showInvite(p) {
+  document.getElementById('invText').textContent = '⚔ ' + p.from + ' から\nきょうりょくバトルの しょうたい!\n(あいことば ' + p.code + ')';
+  inviteEl.dataset.code = p.code;
+  inviteEl.classList.add('on');
+}
+document.getElementById('invYes').addEventListener('click', () => {
+  const code = inviteEl.dataset.code;
+  inviteEl.classList.remove('on');
+  if (MP) mpLeave(true);
+  mpJoin(code, false);
+});
+document.getElementById('invNo').addEventListener('click', () => inviteEl.classList.remove('on'));
+
+function sendInvite(name) {
+  if (!MP) mpJoin('' + Math.floor(1000 + Math.random() * 9000), true);
+  const code = MP.code;
+  const ch = sb.channel('dm-user-' + name);
+  ch.subscribe(st => {
+    if (st === 'SUBSCRIBED') {
+      ch.send({ type: 'broadcast', event: 'invite', payload: { from: userName, code: code } });
+      setTimeout(() => { try { sb.removeChannel(ch); } catch (e) {} }, 1500);
+    }
+  });
+  say('* ' + name + ' に しょうたいを おくった!\n* へやで まっていよう。');
+  if (screenKind !== 'room') openScreen('room');
+}
+
+async function renderFriends() {
+  if (screenKind !== 'friends') return;
+  screenBody.innerHTML = '<div class="sub" style="padding:10px">よみこみちゅう…</div>';
+  let r;
+  try { r = await api('dm_friends', { p_token: token }); }
+  catch (e) { if (screenKind === 'friends') screenBody.innerHTML = '<div class="sub" style="padding:10px">つうしんエラー… (schema.sql は さいしんかな?)</div>'; return; }
+  if (screenKind !== 'friends') return;
+  if (!r.ok) { screenBody.innerHTML = '<div class="sub" style="padding:10px">よみこめなかった…</div>'; return; }
+  screenBody.innerHTML = '';
+  // しんせいフォーム
+  const d0 = document.createElement('div');
+  d0.className = 'dcard'; d0.style.borderColor = '#97e4a0';
+  d0.innerHTML = '<span class="nm" style="color:#97e4a0">フレンドついか</span>' +
+    '<div class="sub">あいての なまえを いれて しんせい!</div>';
+  const inp = document.createElement('input');
+  inp.maxLength = 12; inp.placeholder = 'なまえ';
+  d0.appendChild(inp);
+  const sd = document.createElement('button');
+  sd.className = 'wide gold'; sd.textContent = 'しんせいを おくる';
+  sd.addEventListener('click', async () => {
+    const nm = inp.value.trim();
+    if (!nm) return;
+    sd.disabled = true;
+    try {
+      const rr = await api('dm_friend_request', { p_token: token, p_name: nm });
+      say('* ' + rr.msg);
+    } catch (e) { say('* つうしんエラー…'); }
+    renderFriends();
+  });
+  d0.appendChild(sd);
+  screenBody.appendChild(d0);
+  // とどいた しんせい
+  if (r.incoming.length) {
+    const d1 = document.createElement('div');
+    d1.className = 'dcard'; d1.style.borderColor = '#ffe97a';
+    d1.innerHTML = '<span class="nm" style="color:#ffe97a">とどいた しんせい</span>';
+    r.incoming.forEach(nm => {
+      const row = document.createElement('div');
+      row.className = 'frow';
+      row.innerHTML = '<span class="fname">' + nm + '</span>';
+      const ok = document.createElement('button');
+      ok.className = 'fbtn gold'; ok.textContent = 'OK!';
+      ok.addEventListener('click', async () => { try { await api('dm_friend_respond', { p_token: token, p_name: nm, p_accept: true }); } catch (e) {} renderFriends(); });
+      const ng = document.createElement('button');
+      ng.className = 'fbtn red'; ng.textContent = 'ことわる';
+      ng.addEventListener('click', async () => { try { await api('dm_friend_respond', { p_token: token, p_name: nm, p_accept: false }); } catch (e) {} renderFriends(); });
+      row.appendChild(ok); row.appendChild(ng);
+      d1.appendChild(row);
+    });
+    screenBody.appendChild(d1);
+  }
+  // フレンドいちらん
+  const d2 = document.createElement('div');
+  d2.className = 'dcard'; d2.style.borderColor = '#7fd4ff';
+  d2.innerHTML = '<span class="nm" style="color:#7fd4ff">フレンド (' + r.friends.length + ')</span>';
+  if (!r.friends.length) {
+    const e0 = document.createElement('div'); e0.className = 'sub'; e0.textContent = 'まだ いない…'; d2.appendChild(e0);
+  }
+  r.friends.forEach(nm => {
+    const on = isOnline(nm);
+    const row = document.createElement('div');
+    row.className = 'frow';
+    row.innerHTML = '<span class="fname">' + nm + '</span><span class="' + (on ? 'on' : 'off') + '">●' + (on ? 'オンライン' : 'オフライン') + '</span>';
+    const iv = document.createElement('button');
+    iv.className = 'fbtn gold'; iv.textContent = '⚔ しょうたい';
+    iv.disabled = !on;
+    if (!on) iv.style.opacity = .4;
+    iv.addEventListener('click', () => sendInvite(nm));
+    row.appendChild(iv);
+    d2.appendChild(row);
+  });
+  screenBody.appendChild(d2);
+  // おくった しんせい
+  if (r.outgoing.length) {
+    const d3 = document.createElement('div');
+    d3.className = 'dcard';
+    d3.innerHTML = '<span class="nm">おくった しんせい</span>' +
+      r.outgoing.map(nm => '<div class="frow"><span class="fname">' + nm + '</span><span class="sub">へんじ まち…</span></div>').join('');
+    screenBody.appendChild(d3);
+  }
 }
 
 // ---- なかまオーバーレイ描画 (右上) ----
@@ -906,6 +1176,7 @@ function battleFields() {
 function startBattle() {
   if (MP && MP.p) { mpReady(); return; } // 協力中は「たたかう」=じゅんびOK
   mode = 'battle';
+  closeScreen(); closeDrawer();
   showPanel('hand');
   const e = makeEnemy();
   battle = Object.assign(e, battleFields());
@@ -920,6 +1191,7 @@ function startBattleMp(e, w, v) {
   if (progOf(S.world, S.wave) > S.bestProg) S.bestProg = progOf(S.world, S.wave);
   if (MP) { MP.ready = false; if (MP.p) { MP.p.ready = false; MP.p.down = false; MP.p.defend = false; } }
   mode = 'battle';
+  closeScreen(); closeDrawer();
   showPanel('hand');
   battle = Object.assign({}, e, battleFields());
   renderHand(); renderItems();
@@ -945,13 +1217,13 @@ function winBattle() {
   save();
   hud();
   mode = 'inter'; battle = null;
+  showPanel('none');
   if (MP && MP.p) {
     MP.ready = false; MP.p.ready = false; MP.p.down = false; MP.p.defend = false;
     say(dlg.textContent + '\n* ふたりの しょうりだ!');
-    renderMp(); showPanel('mp');
-  } else {
-    showPanel('menu');
+    renderMp();
   }
+  checkInvite();
 }
 
 function gameOver() {
@@ -960,7 +1232,8 @@ function gameOver() {
   save();
   hud();
   mode = 'inter'; battle = null;
-  showPanel('menu');
+  showPanel('none');
+  checkInvite();
 }
 
 // ---- UI: 手札 ----
@@ -968,6 +1241,7 @@ function renderHand() {
   if (!S.cards) return;
   hand.innerHTML = '';
   cards.forEach((c, i) => {
+    if (!S.cards[i].own) return;
     const r = RAR[c.rar];
     const b = document.createElement('button');
     b.className = 'card';
@@ -1025,11 +1299,20 @@ function endTurn(b) {
 
 // ---- タップ ----
 cv.addEventListener('click', e => {
-  if (mode !== 'battle' || !battle) return;
-  const b = battle;
   const r = cv.getBoundingClientRect();
   const mx = (e.clientX - r.left) / r.width * 192;
   const my = (e.clientY - r.top) / r.height * 320;
+  // ホーム画面の「たたかう」ボタン
+  if (mode === 'inter' && token && S.cards) {
+    if (mx > FB.x && mx < FB.x + FB.w && my > FB.y && my < FB.y + FB.h) {
+      if (MP && MP.p) mpReady();
+      else if (MP) say('* まだ あいてが いない!\n* あいことば「' + MP.code + '」を おしえてあげよう');
+      else startBattle();
+    }
+    return;
+  }
+  if (mode !== 'battle' || !battle) return;
+  const b = battle;
   if (b.state === 'vert') { b.lockX = b.vx; b.state = 'horiz'; say('* つぎは よこバー!'); return; }
   if (b.state === 'horiz') {
     b.lockY = b.hy;
@@ -1841,15 +2124,28 @@ function drawInter() {
   cx.fillStyle = '#c7dbe8'; cx.font = '9px monospace';
   cx.fillText('LV ' + S.lv + '   HP ' + S.hp + '/' + maxHP() + '   ⛃' + S.coins, 96, 232);
   if (MP) {
-    cx.fillStyle = '#7fd4ff'; cx.font = '10px monospace';
-    cx.fillText('きょうりょく あいことば: ' + MP.code, 96, 254);
-    cx.fillStyle = MP.p ? '#97e4a0' : '#92b4c4';
-    cx.fillText(MP.p ? 'なかま: ' + MP.p.name : 'あいてを まってる…', 96, 270);
+    cx.fillStyle = '#7fd4ff'; cx.font = '9px monospace';
+    cx.fillText('⚔ あいことば ' + MP.code + (MP.p ? ' / なかま: ' + MP.p.name : ' (あいて まち…)'), 96, 252);
   }
-  if (anim % 80 < 48) {
-    cx.fillStyle = '#ffe97a'; cx.font = '10px monospace';
-    cx.fillText(MP && MP.p ? '▶ ふたりとも たたかう で スタート' : '▶ たたかう で スタート', 96, 292);
+  // たたかうボタン (ここを タップで スタート)
+  const rn = MP && MP.p ? (MP.ready ? 1 : 0) + (MP.p.ready ? 1 : 0) : 0;
+  const pl = anim % 60 < 30;
+  cx.fillStyle = 'rgba(13,28,51,.92)';
+  cx.fillRect(FB.x, FB.y, FB.w, FB.h);
+  cx.strokeStyle = pl ? '#ffe97a' : '#b89a3e'; cx.lineWidth = 2;
+  cx.strokeRect(FB.x + 0.5, FB.y + 0.5, FB.w - 1, FB.h - 1);
+  cx.fillStyle = '#ffe97a';
+  if (MP && MP.p) {
+    cx.font = 'bold 13px monospace';
+    cx.fillText(MP.ready ? 'あいてを まつ…' : '▶ たたかう', 96, FB.y + 18);
+    cx.font = 'bold 10px monospace';
+    cx.fillStyle = rn === 2 ? '#97e4a0' : '#c7dbe8';
+    cx.fillText(rn + '/2 じゅんびOK', 96, FB.y + 33);
+  } else {
+    cx.font = 'bold 14px monospace';
+    cx.fillText('▶ たたかう', 96, FB.y + 26);
   }
+  cx.lineWidth = 1;
   cx.textAlign = 'left';
 }
 
