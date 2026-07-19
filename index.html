@@ -344,6 +344,7 @@ function hud() {
   hudL.textContent = 'LV ' + S.lv + '  EXP ' + S.exp + '/' + needExp();
   hudR.textContent = 'HP ' + S.hp + '/' + maxHP() + '  ⛃' + S.coins;
   renderHand();
+  mpSyncHp();
 }
 function save() {
   if (!token || !sb) return;
@@ -542,6 +543,14 @@ function mpSend(t, d) {
   if (!MP || !MP.ch) return;
   MP.ch.send({ type: 'broadcast', event: 'evt', payload: Object.assign({ t: t }, d || {}) });
 }
+// 自分のHPが変わっていたら なかまに知らせる (hud() から毎回呼ばれる)
+function mpSyncHp() {
+  if (!MP || !MP.p) return;
+  const h = S.hp, m = maxHP();
+  if (MP.lastHp === h && MP.lastMax === m) return;
+  MP.lastHp = h; MP.lastMax = m;
+  mpSend('hp', { hp: h, maxhp: m });
+}
 function pEvt(txt, col) {
   if (MP && MP.p) { MP.p.evt = txt; MP.p.evtT = 110; MP.p.evtCol = col || '#fff'; }
 }
@@ -560,6 +569,8 @@ function mpJoin(code, isHost) {
       const meta = (st[names[0]][0]) || {};
       MP.p = { name: names[0], hp: meta.hp || 20, maxhp: meta.maxhp || 20, lv: meta.lv || 1,
                down: false, ready: false, defend: false, evt: '', evtT: 0, evtCol: '#fff', critT: 0 };
+      MP.lastHp = -1; // はいってきた あいてに 自分の今のHPを おくる
+      mpSyncHp();
       say('* ' + names[0] + ' が へやに はいってきた!\n* ふたりとも「たたかう」で スタート!');
       renderMp();
       if (mode === 'inter' && deckEl.style.display !== 'block' && gachaEl.style.display !== 'block') showPanel('mp');
@@ -683,6 +694,8 @@ function onMpEvt(p) {
       }
       if (battle && mode === 'battle') {
         battle.ehp = Math.max(0, battle.ehp - p.dmg);
+        // ズレたときは 少ないほうに合わせる (とりこぼし対策)
+        if (typeof p.ehp === 'number') battle.ehp = Math.max(0, Math.min(battle.ehp, p.ehp));
         battle.shake = p.crit ? 12 : 6; battle.shakeAmp = p.crit ? 4 : 2;
         battle.flash = p.crit ? 8 : 3;
         if (battle.ehp <= 0) winBattle();
@@ -910,6 +923,7 @@ function startBattleMp(e, w, v) {
   showPanel('hand');
   battle = Object.assign({}, e, battleFields());
   renderHand(); renderItems();
+  if (MP) { MP.lastHp = -1; mpSyncHp(); } // バトル開始時に HPを同期しなおす
   say('* WAVE ' + v + ' — ' + APPEAR_MSG[e.key] + '\n* ふたりで HPゲージを けずれ!');
 }
 
@@ -1075,7 +1089,7 @@ function resolveHit() {
   const dmg = Math.max(1, Math.round(powOf(b.cardIdx) * g.mult));
   b.ehp = Math.max(0, b.ehp - dmg);
   fxHit(b, g, '' + dmg);
-  mpSend('dmg', { dmg: dmg, crit: g.just, card: b.card.name });
+  mpSend('dmg', { dmg: dmg, crit: g.just, card: b.card.name, ehp: b.ehp });
   say('* ' + g.label + ' ' + dmg + ' ダメージ!');
   setTimeout(() => {
     if (!battle) return;
@@ -1135,7 +1149,7 @@ function resolveRush() {
   b.shake = maxed ? 20 : 12; b.shakeAmp = maxed ? 6 : 3; b.flash = maxed ? 14 : 8;
   b.dmgTxt = '' + dmg; b.dmgT = 46;
   b.bigTxt = maxed ? 'MAXラッシュ!!' : 'ラッシュ!'; b.bigCol = b.hitCol; b.bigT = 44;
-  mpSend('dmg', { dmg: dmg, crit: maxed, card: 'ラッシュ' });
+  mpSend('dmg', { dmg: dmg, crit: maxed, card: 'ラッシュ', ehp: b.ehp });
   say('* ' + b.rushTaps + 'れんだ! ' + dmg + ' ダメージ!' + (maxed ? ' (MAX!!)' : ''));
   setTimeout(() => {
     if (!battle) return;
