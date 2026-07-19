@@ -139,6 +139,24 @@
   .fbtn:active { background: #2a4363; }
   .fbtn.gold { border-color: #ffe97a; color: #ffe97a; }
   .fbtn.red { border-color: #f09595; color: #f09595; }
+  /* デッキ編成 タイル */
+  .sortrow { display: flex; gap: 6px; margin: 4px 0 8px; }
+  .sortrow span { font-size: 11px; color: #92b4c4; align-self: center; }
+  .sortrow button { flex: 1; font-family: inherit; font-size: 11px; padding: 7px 2px; border-radius: 6px;
+                    background: linear-gradient(#152741, #0d1628); color: #92b4c4; border: 1px solid #556; }
+  .sortrow button.sel { color: #ffe97a; border-color: #ffe97a; }
+  .wgrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .wtile { position: relative; font-family: inherit; font-size: 11px; line-height: 1.45; padding: 9px 3px 7px;
+           background: linear-gradient(#152741, #0d1628); color: #fff; border: 2px solid #c9d4da; border-radius: 8px;
+           border-top-width: 4px; text-align: center; }
+  .wtile:active { transform: translateY(1px); background: #2a4363; }
+  .wtile .eqb { position: absolute; top: -8px; right: -4px; font-size: 9px; background: #ffe97a; color: #1d2f10;
+                border-radius: 5px; padding: 1px 5px; font-weight: bold; }
+  .wtile .lvl { font-size: 10px; color: #92b4c4; display: block; }
+  .eqslots { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+  .eqslot { border: 2px dashed #3a4a63; border-radius: 8px; min-height: 54px; display: flex; align-items: center;
+            justify-content: center; font-size: 10px; color: #566; text-align: center; padding: 4px 2px; }
+  .eqslot.filled { border-style: solid; color: #fff; background: linear-gradient(#152741, #0d1628); }
 </style>
 </head>
 <body>
@@ -177,6 +195,7 @@
   <div class="dttl">☰ メニュー</div>
   <button class="pbtn" data-scr="deck">🃏 デッキ</button>
   <button class="pbtn" data-scr="gacha">🎰 ガチャ</button>
+  <button class="pbtn" data-scr="market">🏪 マーケット</button>
   <button class="pbtn" data-scr="friends">👥 フレンド</button>
   <button class="pbtn" data-scr="room">⚔ きょうりょくバトル</button>
   <button class="pbtn" id="logoutBtn">🚪 ログアウト</button>
@@ -334,9 +353,14 @@ const cards = [
   { name: 'うずしお',   base: 13, spd: 3.2, sweet: [0.65, 0.65], rar: 'SR', cd: 2, type: 'atk', desc: 'みぎしたの うずを ねらえ' },
   { name: 'シールド',   base: 8,  spd: 2.4, sweet: [0.5, 0.5], rar: 'SR', cd: 3, type: 'guard', desc: 'つぎの こうげきを ガード' },
   { name: 'たいあたり', base: 6,  spd: 1.8, sweet: [0.5, 0.5], rar: 'N',  cd: 0, type: 'atk',  desc: 'きほんの いちげき', starter: true },
-  { name: 'プチヒール', base: 10, spd: 2.2, sweet: [0.5, 0.5], rar: 'N',  cd: 2, type: 'heal', desc: 'HPを 10 かいふく', starter: true }
+  { name: 'プチヒール', base: 10, spd: 2.2, sweet: [0.5, 0.5], rar: 'N',  cd: 2, type: 'heal', desc: 'HPを 10 かいふく', starter: true },
+  { name: 'ソナー',     base: 12, rar: 'R',  cd: 1, type: 'ring', ringSpd: 1.0, desc: 'わっかが かさなったら タップ!' },
+  { name: 'ハープーン', base: 17, rar: 'SR', cd: 2, type: 'ring', ringSpd: 1.7, desc: 'はやい わっかを ジャストで つらぬけ!' }
 ];
 const GACHA_COST = 80;
+const SELL_PRICE = { N: 20, R: 50, SR: 120, UR: 300 };   // 武器の売値
+const CORE_SELL = [15, 40, 100];                          // コアの売値 (Lv1/2/3)
+const RAR_ORDER = { UR: 3, SR: 2, R: 1, N: 0 };
 const REVIVE_CARD = { name: 'ふっかつ', spd: 2.8, sweet: [0.5, 0.5], rar: 'SR', type: 'revive', desc: 'ジャストで あいてを ふっかつ!' };
 const MAX_CLV = 30;
 const CORE_UNLOCK = [10, 20, 30];
@@ -383,27 +407,34 @@ function say(t) { dlg.textContent = t; }
 function needExp() { return S.lv * 10; }
 function rnd(n) { return Math.floor(Math.random() * n); }
 
+// ---- 武器インスタンス (ダブり可能) ----
+function inst(id) { return S.inv.find(x => x.id === id); }
+function equipList() { return S.equip.map(inst).filter(Boolean); }
+function slotInst(slot) { return equipList()[slot]; }
+function instFire(it) {
+  let p = 0;
+  it.cores.forEach((t, k) => { if (t === 'fire') p += CORE_TYPES.fire.vals[k]; });
+  return p;
+}
+function powOfInst(it) {
+  const raw = cards[it.c].base + (it.lv - 1) + (S.lv - 1);
+  return Math.round(raw * (1 + instFire(it) / 100));
+}
+function cdOfInst(it) {
+  let cd = cards[it.c].cd;
+  it.cores.forEach((t, k) => { if (t === 'cd') cd -= CORE_TYPES.cd.vals[k]; });
+  return Math.max(0, cd);
+}
 function hpCoreBonus() {
   let b = 0;
-  S.cards.forEach(c => c.cores.forEach((t, k) => { if (t === 'hp') b += CORE_TYPES.hp.vals[k]; }));
+  equipList().forEach(it => it.cores.forEach((t, k) => { if (t === 'hp') b += CORE_TYPES.hp.vals[k]; }));
   return b;
 }
 function maxHP() { return S.maxhp + hpCoreBonus(); }
-function firePct(i) {
-  let p = 0;
-  S.cards[i].cores.forEach((t, k) => { if (t === 'fire') p += CORE_TYPES.fire.vals[k]; });
-  return p;
-}
-function cdOf(i) {
-  let cd = cards[i].cd;
-  S.cards[i].cores.forEach((t, k) => { if (t === 'cd') cd -= CORE_TYPES.cd.vals[k]; });
-  return Math.max(0, cd);
-}
-function hasCd3Heal(i) { return S.cards[i].cores[2] === 'cd'; }
-function powOf(i) {
-  const raw = cards[i].base + (S.cards[i].lv - 1) + (S.lv - 1);
-  return Math.round(raw * (1 + firePct(i) / 100));
-}
+// バトル中は そうびスロット番号でひく
+function powOf(slot) { const it = slotInst(slot); return it ? powOfInst(it) : 1; }
+function cdOf(slot) { const it = slotInst(slot); return it ? cdOfInst(it) : 0; }
+function hasCd3Heal(slot) { const it = slotInst(slot); return !!(it && it.cores[2] === 'cd'); }
 function lvCost(lv) { return lv * 10; }
 
 function hud() {
@@ -432,19 +463,31 @@ function initGame(saveStr) {
   if (!S.wave || S.wave < 1) S.wave = 1;
   if (!S.maxhp || S.maxhp < 20) S.maxhp = 20;
   if (!S.bestProg || S.bestProg < progOf(S.world, S.wave)) S.bestProg = progOf(S.world, S.wave);
-  // カードデータ移行/初期化
-  if (!Array.isArray(S.cards)) {
-    // 新規アカウント: スターター3まいだけ もっている
-    S.cards = cards.map(c => ({ lv: 1, cores: [null, null, null], own: !!c.starter }));
+  // 武器インベントリ移行/初期化 (ダブり可能なインスタンス制)
+  if (!Array.isArray(S.inv)) {
+    S.inv = []; S.equip = []; S.coreInv = {}; S.nextId = 1;
+    if (Array.isArray(S.cards)) {
+      // 旧セーブ: もっていたカードを そのままインスタンス化 (own なし旧々セーブは全もち)
+      S.cards.forEach((c, i) => {
+        if (c && (c.own || c.own === undefined) && cards[i]) {
+          S.inv.push({ id: S.nextId++, c: i, lv: Math.min(MAX_CLV, c.lv || 1),
+                       cores: Array.isArray(c.cores) && c.cores.length === 3 ? c.cores : [null, null, null] });
+        }
+      });
+    }
+    if (!S.inv.length) {
+      // 新規: スターター3つ
+      cards.forEach((c, i) => { if (c.starter) S.inv.push({ id: S.nextId++, c: i, lv: 1, cores: [null, null, null] }); });
+    }
+    S.equip = S.inv.slice(0, 4).map(x => x.id);
   }
-  // カードが増えたら育成を残したまま追加分だけ足す
-  while (S.cards.length < cards.length) {
-    S.cards.push({ lv: 1, cores: [null, null, null], own: !!cards[S.cards.length].starter });
-  }
-  S.cards.length = cards.length;
-  // むかしのセーブ (ownなし) は 全カードもち あつかい
-  S.cards.forEach(c => { if (c.own === undefined) c.own = true; });
-  S.cards.forEach(c => { if (!Array.isArray(c.cores) || c.cores.length !== 3) c.cores = [null, null, null]; });
+  delete S.cards;
+  if (!S.coreInv || typeof S.coreInv !== 'object') S.coreInv = {};
+  if (!S.nextId) S.nextId = S.inv.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1;
+  S.inv.forEach(x => { if (!Array.isArray(x.cores) || x.cores.length !== 3) x.cores = [null, null, null]; });
+  // そうびの整合性 (存在しないID除去・かぶり除去・4こまで・からっぽなら自動そうび)
+  S.equip = (Array.isArray(S.equip) ? S.equip : []).filter((id, k, a) => inst(id) && a.indexOf(id) === k).slice(0, 4);
+  if (!S.equip.length && S.inv.length) S.equip = S.inv.slice(0, 4).map(x => x.id);
   delete S.ups;
   S.hp = maxHP();
   mode = 'inter'; battle = null;
@@ -472,9 +515,10 @@ document.getElementById('menuBtn').addEventListener('click', () => {
 scrim.addEventListener('click', closeDrawer);
 
 // ---- フルスクリーン画面 ----
-const SCREEN_TITLES = { deck: '🃏 デッキ', gacha: '🎰 ガチャ', friends: '👥 フレンド', room: '⚔ きょうりょくバトル' };
+const SCREEN_TITLES = { deck: '🃏 デッキ', gacha: '🎰 ガチャ', market: '🏪 マーケット', friends: '👥 フレンド', room: '⚔ きょうりょくバトル' };
 function openScreen(kind) {
   closeDrawer();
+  if (kind === 'deck') deckDetail = null;
   screenKind = kind;
   screenTitle.textContent = SCREEN_TITLES[kind] || '';
   renderScreen();
@@ -484,6 +528,7 @@ function closeScreen() { screenEl.classList.remove('open'); screenKind = null; }
 function renderScreen() {
   if (screenKind === 'deck') renderDeck();
   else if (screenKind === 'gacha') renderGacha();
+  else if (screenKind === 'market') renderMarket();
   else if (screenKind === 'friends') renderFriends();
   else if (screenKind === 'room') renderMp();
 }
@@ -491,155 +536,324 @@ document.getElementById('screenBack').addEventListener('click', closeScreen);
 drawer.querySelectorAll('[data-scr]').forEach(b =>
   b.addEventListener('click', () => openScreen(b.dataset.scr)));
 
-// ---- デッキ画面 ----
-function coreTagsHtml(i) {
-  const c = S.cards[i];
+// ---- デッキ/カード共通ヘルパー ----
+function coreTagsHtml(it) {
   let h = '';
-  c.cores.forEach((t, k) => {
+  it.cores.forEach((t, k) => {
     if (t) h += '<span class="coretag">' + CORE_TYPES[t].name + ' Lv' + (k + 1) + '</span>';
   });
   return h || '<span class="sub">コアなし</span>';
 }
+function instValText(it) {
+  const c = cards[it.c];
+  return c.type === 'heal' ? 'HEAL ' + powOfInst(it) :
+         c.type === 'rush' ? 'MAX ' + powOfInst(it) * 3 :
+         c.type === 'guard' ? 'ガード' :
+         'ATK ' + powOfInst(it);
+}
+function coreKey(t, k) { return t + (k + 1); }
+
+// ---- デッキ編成画面 (タイル + くわしく) ----
+let deckSort = 'rar';   // rar / pow / lv
+let deckDetail = null;  // ひらいている ぶきのid
+function sortedInv() {
+  const a = S.inv.slice();
+  if (deckSort === 'pow') a.sort((x, y) => powOfInst(y) - powOfInst(x));
+  else if (deckSort === 'lv') a.sort((x, y) => y.lv - x.lv || powOfInst(y) - powOfInst(x));
+  else a.sort((x, y) => (RAR_ORDER[cards[y.c].rar] - RAR_ORDER[cards[x.c].rar]) || (powOfInst(y) - powOfInst(x)));
+  return a;
+}
 function renderDeck() {
+  if (deckDetail !== null && inst(deckDetail)) { renderCardDetail(inst(deckDetail)); return; }
+  deckDetail = null;
   screenBody.innerHTML = '';
-  cards.forEach((c, i) => {
-    if (!S.cards[i].own) return;
-    const cl = S.cards[i];
-    const r = RAR[c.rar];
-    const d = document.createElement('div');
-    d.className = 'dcard';
-    d.style.borderColor = r.col;
-    const val = c.type === 'heal' ? 'かいふく ' + powOf(i) :
-                c.type === 'rush' ? 'れんだ いりょく ' + powOf(i) + ' (さいだい ' + powOf(i) * 3 + ')' :
-                c.type === 'guard' ? 'ガード (ジャストで 80%カット)' :
-                'ATK ' + powOf(i);
-    d.innerHTML =
-      '<span class="nm" style="color:' + r.col + '">' + c.name + '</span>' +
-      '<span class="rr" style="color:' + r.col + '">' + r.name + '</span>' +
-      '<div>LV ' + cl.lv + '/' + MAX_CLV + '  |  ' + val + '  |  CD ' + cdOf(i) + 'ターン</div>' +
-      '<div class="sub">' + c.desc + '</div>' +
-      '<div>' + coreTagsHtml(i) + '</div>';
-    screenBody.appendChild(d);
+  // そうびちゅう 4わく
+  const eqh = document.createElement('div');
+  eqh.className = 'sub';
+  eqh.textContent = '― そうびちゅう (' + S.equip.length + '/4) ―';
+  screenBody.appendChild(eqh);
+  const es = document.createElement('div');
+  es.className = 'eqslots';
+  for (let k = 0; k < 4; k++) {
+    const it = S.equip[k] != null ? inst(S.equip[k]) : null;
+    const sl = document.createElement(it ? 'button' : 'div');
+    sl.className = 'eqslot' + (it ? ' filled' : '');
+    if (it) {
+      const c = cards[it.c];
+      sl.style.borderColor = RAR[c.rar].col;
+      sl.innerHTML = '<span><span style="color:' + RAR[c.rar].col + '">' + c.name + '</span><br><span class="lvl">LV' + it.lv + '</span></span>';
+      sl.addEventListener('click', () => { deckDetail = it.id; renderDeck(); });
+    } else {
+      sl.textContent = 'あき';
+    }
+    es.appendChild(sl);
+  }
+  screenBody.appendChild(es);
+  // ならべかえ
+  const sr = document.createElement('div');
+  sr.className = 'sortrow';
+  const srl = document.createElement('span');
+  srl.textContent = 'ならべかえ:';
+  sr.appendChild(srl);
+  [['rar', 'レアど'], ['pow', 'つよさ'], ['lv', 'LV']].forEach(pair => {
+    const bt = document.createElement('button');
+    bt.textContent = pair[1];
+    if (deckSort === pair[0]) bt.classList.add('sel');
+    bt.addEventListener('click', () => { deckSort = pair[0]; renderDeck(); });
+    sr.appendChild(bt);
   });
-  // アイテム欄 (デッキの下)
-  const it = document.createElement('div');
-  it.className = 'dcard';
-  it.style.borderColor = '#f7a8c4';
-  it.innerHTML =
-    '<span class="nm" style="color:#f7a8c4">アイテム</span>' +
-    '<div class="sub">パス: こうげきせず みをまもる (いつでも)\nふっかつ: きょうりょくで あいてがダウンしたら。ジャストで ふっかつ!</div>';
-  screenBody.appendChild(it);
+  screenBody.appendChild(sr);
+  // もちもの タイル
+  const g = document.createElement('div');
+  g.className = 'wgrid';
+  sortedInv().forEach(it => {
+    const c = cards[it.c];
+    const t = document.createElement('button');
+    t.className = 'wtile';
+    t.style.borderColor = RAR[c.rar].col;
+    t.innerHTML = '<span style="color:' + RAR[c.rar].col + '">' + c.name + '</span>' +
+      '<span class="lvl">LV' + it.lv + '</span><span class="lvl">' + instValText(it) + '</span>' +
+      (S.equip.includes(it.id) ? '<span class="eqb">そうび</span>' : '');
+    t.addEventListener('click', () => { deckDetail = it.id; renderDeck(); });
+    g.appendChild(t);
+  });
+  screenBody.appendChild(g);
+  const note = document.createElement('div');
+  note.className = 'sub';
+  note.textContent = 'タップで くわしく (そうび / レベルアップ / コア)。おなじ ぶきでも べつべつに そだつよ。';
+  screenBody.appendChild(note);
 }
 
-// ---- ガチャ画面 (ガチャ + レベルアップ & コア) ----
+// ---- カードの くわしく ----
+function renderCardDetail(it) {
+  screenBody.innerHTML = '';
+  const c = cards[it.c];
+  const r = RAR[c.rar];
+  const d = document.createElement('div');
+  d.className = 'dcard';
+  d.style.borderColor = r.col;
+  d.innerHTML =
+    '<span class="nm" style="color:' + r.col + '">' + c.name + '</span>' +
+    '<span class="rr" style="color:' + r.col + '">' + r.name + '</span>' +
+    '<div>LV ' + it.lv + '/' + MAX_CLV + '  |  ' + instValText(it) + '  |  CD ' + cdOfInst(it) + 'ターン</div>' +
+    '<div class="sub">' + c.desc + '</div>';
+  // そうび / はずす
+  const eq = document.createElement('button');
+  eq.className = 'wide gold';
+  if (S.equip.includes(it.id)) {
+    eq.textContent = 'そうびを はずす';
+    eq.addEventListener('click', () => {
+      S.equip = S.equip.filter(x => x !== it.id);
+      S.hp = Math.min(S.hp, maxHP());
+      hud(); save(); renderDeck();
+    });
+  } else if (S.equip.length < 4) {
+    eq.textContent = '▶ そうびする (' + S.equip.length + '/4)';
+    eq.addEventListener('click', () => {
+      S.equip.push(it.id);
+      hud(); save(); renderDeck();
+    });
+  } else {
+    eq.textContent = 'そうびわくが いっぱい (4/4)';
+    eq.disabled = true; eq.style.opacity = 0.5;
+  }
+  d.appendChild(eq);
+  // レベルアップ
+  const up = document.createElement('button');
+  up.className = 'wide';
+  if (it.lv >= MAX_CLV) { up.textContent = 'レベル MAX!'; up.disabled = true; up.style.opacity = 0.5; }
+  else {
+    up.innerHTML = 'レベルアップ LV' + it.lv + '→' + (it.lv + 1) + '  <span class="sub">⛃' + lvCost(it.lv) + '</span>';
+    up.addEventListener('click', () => {
+      const cost = lvCost(it.lv);
+      if (S.coins < cost) { say('* ゴールドが たりない… (⛃' + cost + ')'); return; }
+      S.coins -= cost; it.lv++;
+      say('* ' + c.name + ' が LV' + it.lv + ' になった!');
+      hud(); save(); renderDeck();
+    });
+  }
+  d.appendChild(up);
+  screenBody.appendChild(d);
+  // コア 3スロット (もちものから つけかえOK)
+  for (let k = 0; k < 3; k++) {
+    const cd2 = document.createElement('div');
+    cd2.className = 'dcard';
+    cd2.style.borderColor = '#7fd4ff';
+    const head = '<span class="nm" style="color:#7fd4ff">コアスロット Lv' + (k + 1) + '</span>';
+    if (it.lv < CORE_UNLOCK[k]) {
+      cd2.innerHTML = head + '<div class="sub">🔒 ぶきが LV' + CORE_UNLOCK[k] + ' になると かいほう</div>';
+    } else if (it.cores[k]) {
+      const tk = it.cores[k];
+      cd2.innerHTML = head + '<div><span class="coretag">' + CORE_TYPES[tk].name + ' Lv' + (k + 1) + '</span> ' +
+        '<span class="sub">' + CORE_TYPES[tk].descs[k] + '</span></div>';
+      const off = document.createElement('button');
+      off.className = 'wide';
+      off.textContent = 'コアを はずして もちものへ';
+      off.addEventListener('click', () => {
+        const key = coreKey(tk, k);
+        S.coreInv[key] = (S.coreInv[key] || 0) + 1;
+        it.cores[k] = null;
+        S.hp = Math.min(S.hp, maxHP());
+        hud(); save(); renderDeck();
+      });
+      cd2.appendChild(off);
+    } else {
+      cd2.innerHTML = head + '<div class="sub">もちものの Lv' + (k + 1) + 'コアを つけられる</div>';
+      const g2 = document.createElement('div');
+      g2.className = 'grow';
+      let any = false;
+      Object.keys(CORE_TYPES).forEach(tk => {
+        const key = coreKey(tk, k);
+        const n = S.coreInv[key] || 0;
+        if (!n) return;
+        any = true;
+        const bt = document.createElement('button');
+        bt.innerHTML = CORE_TYPES[tk].name.replace('コア', '') + ' ×' + n + '<br><span class="sub">' + CORE_TYPES[tk].descs[k] + '</span>';
+        bt.addEventListener('click', () => {
+          S.coreInv[key]--;
+          if (!S.coreInv[key]) delete S.coreInv[key];
+          it.cores[k] = tk;
+          if (tk === 'hp' && S.equip.includes(it.id)) S.hp = maxHP();
+          say('* ' + c.name + ' に ' + CORE_TYPES[tk].name + ' Lv' + (k + 1) + ' を つけた!');
+          hud(); save(); renderDeck();
+        });
+        g2.appendChild(bt);
+      });
+      if (any) cd2.appendChild(g2);
+      else {
+        const no = document.createElement('div');
+        no.className = 'sub';
+        no.textContent = '(Lv' + (k + 1) + 'コアを もってない。ガチャで さがそう)';
+        cd2.appendChild(no);
+      }
+    }
+    screenBody.appendChild(cd2);
+  }
+  const back = document.createElement('button');
+  back.className = 'wide';
+  back.textContent = '← いちらんに もどる';
+  back.addEventListener('click', () => { deckDetail = null; renderDeck(); });
+  screenBody.appendChild(back);
+}
+
+// ---- ガチャ (ぶき or コア。かぶりも そのまま もちものへ) ----
 function doGacha() {
   if (S.coins < GACHA_COST) { say('* ゴールドが たりない… (⛃' + GACHA_COST + ')'); return; }
   S.coins -= GACHA_COST;
-  const pool = cards.map((c, i) => c.starter ? -1 : i).filter(i => i >= 0);
-  const i = pool[rnd(pool.length)];
-  const c = cards[i], cl = S.cards[i];
-  let msg;
-  if (!cl.own) {
-    cl.own = true;
-    msg = '* ✨ あたらしい わざ!\n* 「' + c.name + '」(' + RAR[c.rar].name + ') を おぼえた!!';
-  } else if (cl.lv < MAX_CLV) {
-    cl.lv++;
-    msg = '* 「' + c.name + '」が かぶった!\n* かわりに LV' + cl.lv + ' に レベルアップ!';
+  if (Math.random() < 0.62) {
+    // ぶき (スターターいがい)
+    const pool = cards.map((c, i) => c.starter ? -1 : i).filter(i => i >= 0);
+    const ci = pool[rnd(pool.length)];
+    S.inv.push({ id: S.nextId++, c: ci, lv: 1, cores: [null, null, null] });
+    const dup = S.inv.filter(x => x.c === ci).length > 1;
+    say('* ✨ ぶき「' + cards[ci].name + '」(' + RAR[cards[ci].rar].name + ') を ゲット!' +
+        (dup ? '\n* かぶったけど そのまま もちものへ。\n* そだてるも よし、マーケットで うるも よし!' : ''));
   } else {
-    S.coins += Math.floor(GACHA_COST / 2);
-    msg = '* 「' + c.name + '」は もう LVMAX…\n* ⛃' + Math.floor(GACHA_COST / 2) + ' かえってきた。';
+    // コア (そうび)
+    const types = Object.keys(CORE_TYPES);
+    const tk = types[rnd(types.length)];
+    const roll = Math.random();
+    const k = roll < 0.6 ? 0 : roll < 0.9 ? 1 : 2;
+    const key = coreKey(tk, k);
+    S.coreInv[key] = (S.coreInv[key] || 0) + 1;
+    say('* 💠 そうび「' + CORE_TYPES[tk].name + ' Lv' + (k + 1) + '」を ゲット!\n* ' + CORE_TYPES[tk].descs[k] + '\n* デッキがめんで ぶきに つけよう!');
   }
-  say(msg);
   hud(); save(); renderGacha();
 }
 function renderGacha() {
   screenBody.innerHTML = '';
-  // ガチャをまわす
   const g0 = document.createElement('div');
   g0.className = 'dcard';
   g0.style.borderColor = '#ffe97a';
-  g0.innerHTML = '<span class="nm" style="color:#ffe97a">🎰 わざガチャ</span>' +
-    '<div class="sub">あたらしい わざを ランダムで 1つ! かぶったら その わざが レベルアップ</div>';
+  g0.innerHTML = '<span class="nm" style="color:#ffe97a">🎰 ガチャ</span>' +
+    '<div class="sub">ぶき か コア(そうび) が ランダムで 1こ!\nかぶった ぶきも そのまま もちものへ (マーケットで うれる)</div>';
   const pb = document.createElement('button');
   pb.className = 'wide gold';
   pb.innerHTML = '▶ ガチャを まわす  <span class="sub">⛃' + GACHA_COST + ' (もってる ⛃' + S.coins + ')</span>';
   pb.addEventListener('click', doGacha);
   g0.appendChild(pb);
-  // まだ持ってないカードのシルエット
-  const un = cards.filter((c, i) => !S.cards[i].own);
+  const owned = {};
+  S.inv.forEach(x => { owned[x.c] = true; });
+  const un = cards.filter((c, i) => !c.starter && !owned[i]);
   if (un.length) {
     const uv = document.createElement('div');
     uv.className = 'sub'; uv.style.marginTop = '6px';
-    uv.innerHTML = 'まだ みつけてない わざ: ' + un.map(c => '<span style="color:' + RAR[c.rar].col + '">???(' + RAR[c.rar].name + ')</span>').join(' ');
+    uv.innerHTML = 'まだ みつけてない ぶき: ' + un.map(c => '<span style="color:' + RAR[c.rar].col + '">???(' + RAR[c.rar].name + ')</span>').join(' ');
     g0.appendChild(uv);
   }
   screenBody.appendChild(g0);
-  // 強化ショップ (もっているカードだけ)
-  cards.forEach((c, i) => {
-    if (!S.cards[i].own) return;
-    const cl = S.cards[i];
-    const r = RAR[c.rar];
-    const d = document.createElement('div');
-    d.className = 'dcard';
-    d.style.borderColor = r.col;
-    let h = '<span class="nm" style="color:' + r.col + '">' + c.name + '</span>' +
-            '<span class="rr" style="color:' + r.col + '">' + r.name + '</span>' +
-            '<div>LV ' + cl.lv + '/' + MAX_CLV + '  |  いりょく ' + powOf(i) + '</div>' +
-            '<div>' + coreTagsHtml(i) + '</div>';
-    d.innerHTML = h;
-    // レベルアップボタン
-    const up = document.createElement('button');
-    up.className = 'wide';
-    if (cl.lv >= MAX_CLV) {
-      up.textContent = 'レベル MAX!';
-      up.disabled = true; up.style.opacity = 0.5;
-    } else {
-      up.innerHTML = 'レベルアップ LV' + cl.lv + '→' + (cl.lv + 1) + '  <span class="sub">⛃' + lvCost(cl.lv) + '</span>';
-      up.addEventListener('click', () => {
-        const cost = lvCost(cl.lv);
-        if (S.coins < cost) { say('* ゴールドが たりない… (⛃' + cost + ')'); return; }
-        S.coins -= cost; cl.lv++;
-        say('* ' + c.name + ' が LV' + cl.lv + ' になった!');
-        hud(); save(); renderGacha();
-      });
-    }
-    d.appendChild(up);
-    // コアスロット: いちばん下のあいてる解放スロット
-    for (let k = 0; k < 3; k++) {
-      if (cl.cores[k]) continue;
-      if (cl.lv < CORE_UNLOCK[k]) {
-        const info = document.createElement('div');
-        info.className = 'sub';
-        info.style.marginTop = '6px';
-        info.textContent = '▶ LV' + CORE_UNLOCK[k] + 'で Lv' + (k + 1) + 'コアを つけられる (⛃' + CORE_COST[k] + ')';
-        d.appendChild(info);
-      } else {
-        const lbl = document.createElement('div');
-        lbl.className = 'sub'; lbl.style.marginTop = '6px';
-        lbl.textContent = '▼ Lv' + (k + 1) + 'コアを えらんで そうちゃく (⛃' + CORE_COST[k] + ')';
-        d.appendChild(lbl);
-        const g = document.createElement('div');
-        g.className = 'grow';
-        Object.keys(CORE_TYPES).forEach(tk => {
-          const bt = document.createElement('button');
-          bt.innerHTML = CORE_TYPES[tk].name.replace('コア', '') + '<br><span class="sub">' + CORE_TYPES[tk].descs[k] + '</span>';
-          bt.addEventListener('click', () => {
-            if (S.coins < CORE_COST[k]) { say('* ゴールドが たりない… (⛃' + CORE_COST[k] + ')'); return; }
-            S.coins -= CORE_COST[k];
-            cl.cores[k] = tk;
-            S.hp = Math.min(S.hp, maxHP());
-            if (tk === 'hp') S.hp = maxHP();
-            say('* ' + c.name + ' に ' + CORE_TYPES[tk].name + ' Lv' + (k + 1) + ' を つけた!\n* この武器 せんようだ。');
-            hud(); save(); renderGacha();
-          });
-          g.appendChild(bt);
-        });
-        d.appendChild(g);
-      }
-      break; // 1スロットずつ
-    }
-    screenBody.appendChild(d);
+  // もっている コア
+  const ck = Object.keys(S.coreInv).sort();
+  const g1 = document.createElement('div');
+  g1.className = 'dcard'; g1.style.borderColor = '#7fd4ff';
+  g1.innerHTML = '<span class="nm" style="color:#7fd4ff">💠 もっている コア</span>' +
+    (ck.length ? '<div>' + ck.map(key => {
+      const tk = key.slice(0, -1), k = +key.slice(-1) - 1;
+      return '<span class="coretag">' + CORE_TYPES[tk].name + ' Lv' + (k + 1) + ' ×' + S.coreInv[key] + '</span>';
+    }).join(' ') + '</div>' : '<div class="sub">まだ ない。ガチャで さがそう!</div>');
+  screenBody.appendChild(g1);
+}
+
+// ---- マーケット (うりば) ----
+function renderMarket() {
+  screenBody.innerHTML = '';
+  const h0 = document.createElement('div');
+  h0.className = 'dcard'; h0.style.borderColor = '#97e4a0';
+  h0.innerHTML = '<span class="nm" style="color:#97e4a0">🏪 マーケット</span>' +
+    '<div class="sub">いらない ぶきや コアを うって ⛃に!\nそうびちゅうの ぶきは うれないよ (もってる ⛃' + S.coins + ')</div>';
+  screenBody.appendChild(h0);
+  // ぶき (そうびしてないものだけ)
+  const sellable = sortedInv().filter(it => !S.equip.includes(it.id));
+  const d1 = document.createElement('div');
+  d1.className = 'dcard';
+  d1.innerHTML = '<span class="nm">ぶき</span>' +
+    (sellable.length ? '' : '<div class="sub">うれる ぶきが ない (そうびを はずせば うれる)</div>');
+  sellable.forEach(it => {
+    const c = cards[it.c];
+    const price = SELL_PRICE[c.rar] + (it.lv - 1) * 5;
+    const row = document.createElement('div');
+    row.className = 'frow';
+    row.innerHTML = '<span class="fname" style="color:' + RAR[c.rar].col + '">' + c.name + ' LV' + it.lv + '</span>';
+    const sl = document.createElement('button');
+    sl.className = 'fbtn gold'; sl.textContent = '⛃' + price + ' で うる';
+    sl.addEventListener('click', () => {
+      if (S.inv.length <= 1) { say('* さいごの ぶきは うれない!'); return; }
+      it.cores.forEach((t, k) => { if (t) { const key = coreKey(t, k); S.coreInv[key] = (S.coreInv[key] || 0) + 1; } });
+      S.inv = S.inv.filter(x => x.id !== it.id);
+      S.coins += price;
+      say('* 「' + c.name + '」を ⛃' + price + ' で うった!\n* (ついてた コアは もちものに もどったよ)');
+      hud(); save(); renderMarket();
+    });
+    row.appendChild(sl);
+    d1.appendChild(row);
   });
+  screenBody.appendChild(d1);
+  // コア
+  const ck = Object.keys(S.coreInv).sort();
+  const d2 = document.createElement('div');
+  d2.className = 'dcard'; d2.style.borderColor = '#7fd4ff';
+  d2.innerHTML = '<span class="nm" style="color:#7fd4ff">コア</span>' +
+    (ck.length ? '' : '<div class="sub">うれる コアが ない</div>');
+  ck.forEach(key => {
+    const tk = key.slice(0, -1), k = +key.slice(-1) - 1;
+    const price = CORE_SELL[k];
+    const row = document.createElement('div');
+    row.className = 'frow';
+    row.innerHTML = '<span class="fname">' + CORE_TYPES[tk].name + ' Lv' + (k + 1) + ' ×' + S.coreInv[key] + '</span>';
+    const sl = document.createElement('button');
+    sl.className = 'fbtn gold'; sl.textContent = '⛃' + price + ' で 1こ うる';
+    sl.addEventListener('click', () => {
+      if (!S.coreInv[key]) return;
+      S.coreInv[key]--;
+      if (!S.coreInv[key]) delete S.coreInv[key];
+      S.coins += price;
+      say('* ' + CORE_TYPES[tk].name + ' Lv' + (k + 1) + ' を ⛃' + price + ' で うった!');
+      hud(); save(); renderMarket();
+    });
+    row.appendChild(sl);
+    d2.appendChild(row);
+  });
+  screenBody.appendChild(d2);
 }
 
 // ================================================================
@@ -763,6 +977,7 @@ function renderMp() {
 
 function mpReady() {
   if (!MP || !MP.p || mode !== 'inter' || MP.ready) return;
+  if (!equipList().length) { say('* ぶきを そうびしてない!\n* メニュー → デッキ で そうびしよう'); return; }
   MP.ready = true;
   mpSend('ready', { prog: progOf(S.world, S.wave) });
   renderMp();
@@ -930,7 +1145,8 @@ function meDown() {
 function doWipe() {
   if (!battle) return;
   battle = null; mode = 'inter';
-  say('* ふたりとも たおれてしまった…\n* ほしのちからで ふっかつ! (すすみは そのまま)');
+  S.coins += 20;
+  say('* ふたりとも たおれてしまった…\n* ほしのちからで ふっかつ! (すすみは そのまま)\n* なぐさめに ⛃20 ひろった。');
   S.hp = maxHP();
   save(); hud();
   showPanel('none');
@@ -1168,12 +1384,14 @@ function battleFields() {
     hitPt: null, hitCol: '#fff', hitBig: false, dmgTxt: '', dmgT: 0,
     bigTxt: '', bigCol: '#fff', bigT: 0,
     atks: [], defEndT: -1, ink: false, inkT: 0, guard: 0,
-    cds: cards.map(() => 0),
+    ringR: 0,
+    cds: [0, 0, 0, 0],
     rushT: 0, rushDmg: 0, rushTaps: 0, rushTapFx: []
   };
 }
 
 function startBattle() {
+  if (!equipList().length) { say('* ぶきを そうびしてない!\n* メニュー → デッキ で そうびしよう'); return; }
   if (MP && MP.p) { mpReady(); return; } // 協力中は「たたかう」=じゅんびOK
   mode = 'battle';
   closeScreen(); closeDrawer();
@@ -1227,7 +1445,8 @@ function winBattle() {
 }
 
 function gameOver() {
-  say('* たおれてしまった…\n* でも ほしのちからで ふっかつした! (すすみは そのまま)');
+  S.coins += 20;
+  say('* たおれてしまった…\n* でも ほしのちからで ふっかつした! (すすみは そのまま)\n* なぐさめに ⛃20 ひろった。');
   S.hp = maxHP();
   save();
   hud();
@@ -1238,10 +1457,10 @@ function gameOver() {
 
 // ---- UI: 手札 ----
 function renderHand() {
-  if (!S.cards) return;
+  if (!S.inv) return;
   hand.innerHTML = '';
-  cards.forEach((c, i) => {
-    if (!S.cards[i].own) return;
+  equipList().forEach((it, i) => {
+    const c = cards[it.c];
     const r = RAR[c.rar];
     const b = document.createElement('button');
     b.className = 'card';
@@ -1268,8 +1487,10 @@ function renderHand() {
 function useCard(i) {
   const b = battle;
   if (!b || b.state !== 'idle') return;
-  if (b.cds[i] > 0) { say('* ' + cards[i].name + ' は クールダウンちゅう! (あと' + b.cds[i] + 'ターン)'); return; }
-  const c = cards[i];
+  const it = slotInst(i);
+  if (!it) return;
+  const c = cards[it.c];
+  if (b.cds[i] > 0) { say('* ' + c.name + ' は クールダウンちゅう! (あと' + b.cds[i] + 'ターン)'); return; }
   b.card = c; b.cardIdx = i;
   b.cds[i] = cdOf(i) + 1;
   if (hasCd3Heal(i)) {
@@ -1281,6 +1502,13 @@ function useCard(i) {
     b.state = 'rush';
     b.rushT = 300; b.rushDmg = 0; b.rushTaps = 0; b.rushTapFx = [];
     say('* れんだ しろーーー!! (5びょう)');
+    return;
+  }
+  if (c.type === 'ring') {
+    b.state = 'ring';
+    b.ringR = 66;
+    say('* わっかが かさなる しゅんかんに タップ!');
+    renderHand();
     return;
   }
   b.lockX = -1; b.lockY = -1;
@@ -1303,7 +1531,7 @@ cv.addEventListener('click', e => {
   const mx = (e.clientX - r.left) / r.width * 192;
   const my = (e.clientY - r.top) / r.height * 320;
   // ホーム画面の「たたかう」ボタン
-  if (mode === 'inter' && token && S.cards) {
+  if (mode === 'inter' && token && S.inv) {
     if (mx > FB.x && mx < FB.x + FB.w && my > FB.y && my < FB.y + FB.h) {
       if (MP && MP.p) mpReady();
       else if (MP) say('* まだ あいてが いない!\n* あいことば「' + MP.code + '」を おしえてあげよう');
@@ -1320,6 +1548,11 @@ cv.addEventListener('click', e => {
     else if (b.card.type === 'revive') resolveRevive();
     else if (b.card.type === 'guard') resolveGuard();
     else resolveHit();
+    return;
+  }
+  if (b.state === 'ring') {
+    b.lockX = 96; b.lockY = BY + BH / 2;
+    resolveHitG(ringGrade(b));
     return;
   }
   if (b.state === 'rush') {
@@ -1365,10 +1598,18 @@ function fxHit(b, g, txt) {
   b.bigTxt = g.label; b.bigCol = g.col; b.bigT = 44;
 }
 
-function resolveHit() {
+const RING_TARGET = 16; // わっかの ねらい半径
+function ringGrade(b) {
+  const d = Math.abs(b.ringR - RING_TARGET);
+  if (d < 2.5) return { mult: 1.5, label: 'ジャスト!!', col: '#ffe97a', just: true };
+  if (d < 7)  return { mult: 1.0, label: 'ヒット!', col: '#97c459', just: false };
+  if (d < 14) return { mult: 0.6, label: 'かすった…', col: '#f09f5b', just: false };
+  return { mult: 0.25, label: 'とおい…', col: '#9c92c4', just: false };
+}
+function resolveHit() { resolveHitG(gradeOf(battle)); }
+function resolveHitG(g) {
   const b = battle;
   b.state = 'result';
-  const g = gradeOf(b);
   const dmg = Math.max(1, Math.round(powOf(b.cardIdx) * g.mult));
   b.ehp = Math.max(0, b.ehp - dmg);
   fxHit(b, g, '' + dmg);
@@ -1478,9 +1719,12 @@ function startDefend() {
   };
   const addSpikes = (n, i0) => {
     const tele = Math.max(24, (boss ? 34 : 40) - Math.floor(L / 2));
+    // ボスは 針の間隔をせまく、そのかわり ゆっくり飛んでくる
+    const gap = boss ? 21 : 30;
+    const fly = boss ? 17 : 13;
     for (let i = 0; i < n; i++) b.atks.push({
       gim: 'spike', side: SIDES[rnd(4)], pos: 0.15 + Math.random() * 0.7,
-      t: -((i0 + i) * 30 + rnd(18)), tele: tele, fly: 9, dmgF: 0.6, hitMsg: 'トゲが ささった!',
+      t: -((i0 + i) * gap + rnd(14)), tele: tele, fly: fly, dmgF: 0.6, hitMsg: 'トゲが ささった!',
       done: false, broken: false, active: false, popT: 0, strikeT: 0, zapT: 0, cx: -99, cy: -99
     });
   };
@@ -2003,6 +2247,31 @@ function drawBattle() {
     cx.beginPath(); cx.moveTo(BX, b.hy); cx.lineTo(BX + BW, b.hy); cx.stroke();
   }
 
+  if (b.state === 'ring') {
+    // わっかが ちぢんでいく。ターゲットの輪と かさなったら タップ!
+    b.ringR -= b.card.ringSpd;
+    const cxp = 96, cyp = BY + BH / 2;
+    // ターゲットの輪 (点線)
+    cx.setLineDash([4, 3]);
+    cx.strokeStyle = '#ffe97a'; cx.lineWidth = 2;
+    cx.beginPath(); cx.arc(cxp, cyp, RING_TARGET, 0, 7); cx.stroke();
+    cx.setLineDash([]);
+    // ちぢむ わっか
+    const near = Math.abs(b.ringR - RING_TARGET) < 7;
+    cx.strokeStyle = near ? '#97c459' : RAR[b.card.rar].col;
+    cx.lineWidth = near ? 4 : 3;
+    cx.beginPath(); cx.arc(cxp, cyp, Math.max(2, b.ringR), 0, 7); cx.stroke();
+    cx.lineWidth = 1;
+    cx.fillStyle = '#c7dbe8'; cx.font = '9px monospace';
+    cx.textAlign = 'center';
+    cx.fillText('かさなったら タップ!', cxp, cyp + 44);
+    cx.textAlign = 'left';
+    if (b.ringR <= 3) { // とりのがし
+      b.lockX = cxp; b.lockY = cyp;
+      resolveHitG({ mult: 0.25, label: 'とおい…', col: '#9c92c4', just: false });
+    }
+  }
+
   if (b.state === 'rush') drawRush(b);
 
   if (b.state === 'defend') {
@@ -2151,7 +2420,7 @@ function drawInter() {
 
 function loop() {
   anim++;
-  if (token && S.cards) {
+  if (token && S.inv) {
     if (mode === 'battle' && battle) drawBattle();
     else drawInter();
   }
