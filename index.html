@@ -116,6 +116,19 @@
   #invText { font-size: 13px; line-height: 1.8; white-space: pre-line; margin-bottom: 12px; }
   #invBox .grow2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
+  /* ===== えらぶボタン (システム管理などで つかう) ===== */
+  .pickgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .pickbtn { position: relative; font-family: inherit; font-size: 12px; line-height: 1.4; padding: 12px 6px 12px 26px;
+             text-align: left; background: linear-gradient(#16233c, #0d1628); color: #c7dbe8;
+             border: 2px solid #3a4a63; border-radius: 8px; transition: transform .08s, box-shadow .15s; }
+  .pickbtn .ck { position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+                 width: 14px; height: 14px; line-height: 14px; text-align: center; font-size: 11px; font-weight: bold;
+                 border: 2px solid #566; border-radius: 4px; color: #0d1628; }
+  .pickbtn.pickon { font-weight: bold; box-shadow: 0 0 12px rgba(255,255,255,.25); transform: translateY(-1px); }
+  .pickbtn.pickon .ck { background: #fff; border-color: #fff; color: #0d1628; }
+  .pickbtn:active { transform: scale(.97); }
+  .grow button.pickon { border-color: #ffe97a; color: #ffe97a; background: rgba(255,233,122,.18); font-weight: bold; }
+
   /* ===== システムからの プレゼント通知 (上から) ===== */
   #giftBanner { position: fixed; top: 0; left: 0; right: 0; z-index: 80; display: flex; flex-direction: column; align-items: center;
                 gap: 6px; padding: 8px; pointer-events: none; }
@@ -241,6 +254,7 @@
   <button class="pbtn" data-scr="friends">👥 フレンド</button>
   <button class="pbtn" data-scr="room">⚔ きょうりょくバトル</button>
   <button class="pbtn" data-scr="admin" id="adminBtn" style="display:none;border-color:#ff9a3c;color:#ff9a3c">🛠 システム</button>
+  <button class="pbtn" id="soundBtn">🔊 おと: ON</button>
   <button class="pbtn" id="logoutBtn">🚪 ログアウト</button>
 </div>
 
@@ -288,6 +302,219 @@
   }
 })();
 
+
+// ================================================================
+// ==== おと (BGM / こうかおん) — Web Audio で その場で つくる ====
+// ================================================================
+const AU = { ctx: null, master: null, mg: null, sg: null, on: true, songId: null,
+             timer: null, step: 0, nextT: 0, song: null };
+try { AU.on = localStorage.getItem('dm_sound') !== '0'; } catch (e) {}
+
+const NOTE = { C:0, 'C#':1, D:2, 'D#':3, E:4, F:5, 'F#':6, G:7, 'G#':8, A:9, 'A#':10, B:11 };
+function nf(n) { // 'A4' → しゅうはすう
+  if (!n) return 0;
+  const m = /^([A-G]#?)(-?\d)$/.exec(n);
+  if (!m) return 0;
+  return 440 * Math.pow(2, (NOTE[m[1]] + (+m[2] - 4) * 12 - 9) / 12);
+}
+function auStart() { // さいしょの タップで おこす (ブラウザの きまり)
+  if (AU.ctx) { if (AU.ctx.state === 'suspended') AU.ctx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  AU.ctx = new AC();
+  AU.master = AU.ctx.createGain(); AU.master.gain.value = AU.on ? 0.9 : 0;
+  AU.master.connect(AU.ctx.destination);
+  AU.mg = AU.ctx.createGain(); AU.mg.gain.value = 0.30; AU.mg.connect(AU.master); // BGM
+  AU.sg = AU.ctx.createGain(); AU.sg.gain.value = 0.55; AU.sg.connect(AU.master); // こうかおん
+}
+function auToggle() {
+  AU.on = !AU.on;
+  try { localStorage.setItem('dm_sound', AU.on ? '1' : '0'); } catch (e) {}
+  if (AU.master) AU.master.gain.value = AU.on ? 0.9 : 0;
+  if (AU.on) { auStart(); if (AU.songId) { const id = AU.songId; AU.songId = null; playSong(id); } }
+  return AU.on;
+}
+// おと 1つ
+function tone(o) {
+  if (!AU.ctx || !AU.on) return;
+  const t0 = AU.ctx.currentTime + (o.at || 0);
+  const g = AU.ctx.createGain();
+  const osc = AU.ctx.createOscillator();
+  osc.type = o.type || 'square';
+  osc.frequency.setValueAtTime(Math.max(20, o.f), t0);
+  if (o.f2) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.f2), t0 + o.d);
+  const vol = (o.g == null ? 0.3 : o.g);
+  const atk = o.atk == null ? 0.005 : o.atk;
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t0 + atk);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.d);
+  osc.connect(g); g.connect(o.bus || AU.sg);
+  osc.start(t0); osc.stop(t0 + o.d + 0.02);
+}
+// ノイズ (ドラム/しゅわー)
+let NOISEBUF = null;
+function noise(o) {
+  if (!AU.ctx || !AU.on) return;
+  if (!NOISEBUF) {
+    NOISEBUF = AU.ctx.createBuffer(1, AU.ctx.sampleRate * 1.2, AU.ctx.sampleRate);
+    const d = NOISEBUF.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const t0 = AU.ctx.currentTime + (o.at || 0);
+  const src = AU.ctx.createBufferSource(); src.buffer = NOISEBUF;
+  const bp = AU.ctx.createBiquadFilter();
+  bp.type = o.ft || 'bandpass';
+  bp.frequency.setValueAtTime(o.f || 1200, t0);
+  if (o.f2) bp.frequency.exponentialRampToValueAtTime(Math.max(60, o.f2), t0 + o.d);
+  bp.Q.value = o.q == null ? 1.2 : o.q;
+  const g = AU.ctx.createGain();
+  const vol = o.g == null ? 0.25 : o.g;
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.d);
+  src.connect(bp); bp.connect(g); g.connect(o.bus || AU.sg);
+  src.start(t0); src.stop(t0 + o.d + 0.02);
+}
+
+// ---- きょく (16ステップ × パターン) ----
+// _ = やすみ。lead/bass は おとの なまえ、drum は k(バスドラ) s(スネア) h(ハイハット)
+const SONGS = {
+  seaMenu: { bpm: 96, lead: 'triangle', bassT: 'sine', vol: 0.9,
+    lead1: ['E5','_','B4','_','C5','_','B4','_','A4','_','B4','_','G4','_','_','_',
+            'D5','_','A4','_','B4','_','A4','_','G4','_','A4','_','E4','_','_','_'],
+    bass1: ['E2','_','_','_','B2','_','_','_','C3','_','_','_','G2','_','_','_',
+            'D3','_','_','_','A2','_','_','_','G2','_','_','_','E2','_','_','_'],
+    drum1: ['_','_','h','_','_','_','h','_','_','_','h','_','_','_','h','_',
+            '_','_','h','_','_','_','h','_','_','_','h','_','_','_','h','_'] },
+  seaBattle: { bpm: 148, lead: 'square', bassT: 'sawtooth', vol: 1,
+    lead1: ['E5','E5','_','G5','A5','_','G5','E5','D5','_','E5','_','B4','_','_','_',
+            'E5','E5','_','G5','B5','_','A5','G5','A5','_','B5','_','E5','_','_','_'],
+    bass1: ['E2','E2','E2','_','E2','_','G2','_','A2','A2','A2','_','B2','_','B2','_',
+            'E2','E2','E2','_','E2','_','G2','_','C3','_','B2','_','A2','_','_','_'],
+    drum1: ['k','_','h','s','k','_','h','s','k','_','h','s','k','h','h','s',
+            'k','_','h','s','k','_','h','s','k','_','h','s','k','h','s','s'] },
+  caveMenu: { bpm: 78, lead: 'triangle', bassT: 'sine', vol: 0.85,
+    lead1: ['A4','_','_','C5','_','_','B4','_','A4','_','_','_','F4','_','_','_',
+            'G4','_','_','A4','_','_','E4','_','F4','_','_','_','D4','_','_','_'],
+    bass1: ['A1','_','_','_','_','_','_','_','F1','_','_','_','_','_','_','_',
+            'G1','_','_','_','_','_','_','_','D2','_','_','_','_','_','_','_'],
+    drum1: ['_','_','_','_','_','_','h','_','_','_','_','_','_','_','h','_',
+            '_','_','_','_','_','_','h','_','_','_','_','_','_','_','h','_'] },
+  caveBattle: { bpm: 138, lead: 'square', bassT: 'sawtooth', vol: 1,
+    lead1: ['A4','_','A4','_','C5','_','B4','_','A4','_','G4','_','E4','_','_','_',
+            'F4','_','F4','_','A4','_','G4','_','F4','_','E4','_','D4','_','_','_'],
+    bass1: ['A1','A1','_','A1','_','A1','_','_','F1','F1','_','F1','_','F1','_','_',
+            'G1','G1','_','G1','_','G1','_','_','E2','_','E2','_','A1','_','_','_'],
+    drum1: ['k','_','_','h','s','_','k','_','k','_','_','h','s','_','h','h',
+            'k','_','_','h','s','_','k','_','k','h','k','h','s','s','_','_'] },
+  plainsMenu: { bpm: 108, lead: 'triangle', bassT: 'sine', vol: 0.9,
+    lead1: ['G4','_','B4','_','D5','_','B4','_','C5','_','E5','_','D5','_','_','_',
+            'A4','_','C5','_','E5','_','C5','_','G4','_','B4','_','G4','_','_','_'],
+    bass1: ['G2','_','_','_','D3','_','_','_','C3','_','_','_','G2','_','_','_',
+            'A2','_','_','_','E3','_','_','_','C3','_','_','_','D3','_','_','_'],
+    drum1: ['_','_','h','_','s','_','h','_','_','_','h','_','s','_','h','_',
+            '_','_','h','_','s','_','h','_','_','_','h','_','s','_','h','h'] },
+  plainsBattle: { bpm: 156, lead: 'square', bassT: 'sawtooth', vol: 1,
+    lead1: ['G5','_','D5','G5','_','B5','A5','G5','E5','_','G5','_','D5','_','_','_',
+            'C5','_','G5','C6','_','B5','A5','G5','A5','_','B5','_','G5','_','_','_'],
+    bass1: ['G2','G2','_','G2','D3','_','G2','_','C3','C3','_','C3','G2','_','G2','_',
+            'A2','A2','_','A2','E3','_','A2','_','D3','_','D3','_','G2','_','_','_'],
+    drum1: ['k','_','h','s','_','k','h','s','k','_','h','s','k','k','h','s',
+            'k','_','h','s','_','k','h','s','k','_','h','s','k','h','s','s'] },
+  boss: { bpm: 164, lead: 'sawtooth', bassT: 'sawtooth', vol: 1.05,
+    lead1: ['D5','_','D5','D#5','D5','_','A4','_','D5','_','F5','_','E5','_','D5','_',
+            'A#4','_','A#4','B4','A#4','_','F4','_','A#4','_','D5','_','C5','_','A#4','_'],
+    bass1: ['D2','D2','D2','D2','D2','D2','D2','D2','A#1','A#1','A#1','A#1','A#1','A#1','A#1','A#1',
+            'G1','G1','G1','G1','G1','G1','G1','G1','A1','A1','A1','A1','A1','A1','A1','A1'],
+    drum1: ['k','h','s','h','k','h','s','h','k','h','s','h','k','k','s','s',
+            'k','h','s','h','k','h','s','h','k','h','s','h','s','s','s','s'] }
+};
+function songFor(kind) { // kind: 'menu' | 'battle' | 'boss'
+  if (kind === 'boss') return 'boss';
+  const w = ((S && S.world ? S.world : 1) - 1) % 3;
+  return (w === 1 ? 'cave' : w === 2 ? 'plains' : 'sea') + (kind === 'battle' ? 'Battle' : 'Menu');
+}
+function playSong(id) {
+  if (!AU.on) { AU.songId = id; return; }
+  auStart();
+  if (!AU.ctx) return;
+  if (AU.songId === id && AU.timer) return;
+  stopSong();
+  AU.songId = id; AU.song = SONGS[id]; AU.step = 0;
+  if (!AU.song) return;
+  AU.nextT = AU.ctx.currentTime + 0.06;
+  const stepDur = 60 / AU.song.bpm / 4; // 16ぶおんぷ
+  AU.timer = setInterval(() => {
+    if (!AU.ctx || !AU.song) return;
+    while (AU.nextT < AU.ctx.currentTime + 0.18) {
+      const sg = AU.song, i = AU.step % sg.lead1.length;
+      const at = AU.nextT - AU.ctx.currentTime;
+      const ln = sg.lead1[i];
+      if (ln && ln !== '_') tone({ f: nf(ln), d: stepDur * 1.7, type: sg.lead, g: 0.20 * sg.vol, at: at, bus: AU.mg });
+      const bn = sg.bass1[i];
+      if (bn && bn !== '_') tone({ f: nf(bn), d: stepDur * 1.5, type: sg.bassT, g: 0.24 * sg.vol, at: at, bus: AU.mg });
+      const dn = sg.drum1[i];
+      if (dn === 'k') tone({ f: 150, f2: 46, d: 0.15, type: 'sine', g: 0.5, at: at, bus: AU.mg });
+      else if (dn === 's') noise({ f: 1700, d: 0.11, g: 0.20, at: at, q: 0.9, bus: AU.mg });
+      else if (dn === 'h') noise({ f: 7000, d: 0.035, g: 0.09, at: at, q: 1.5, bus: AU.mg });
+      AU.nextT += stepDur; AU.step++;
+    }
+  }, 40);
+}
+function stopSong() { if (AU.timer) { clearInterval(AU.timer); AU.timer = null; } AU.songId = null; AU.song = null; }
+
+// ---- こうかおん ----
+const SFX = {
+  tap:     () => tone({ f: 640, d: 0.06, type: 'square', g: 0.18 }),
+  lock:    () => tone({ f: 880, f2: 1200, d: 0.08, type: 'square', g: 0.22 }),
+  card:    () => { tone({ f: 520, d: 0.06, type: 'square', g: 0.2 }); tone({ f: 780, d: 0.09, type: 'square', g: 0.16, at: 0.05 }); },
+  just:    () => { [0,1,2].forEach(i => tone({ f: 880 * Math.pow(1.26, i), d: 0.16, type: 'square', g: 0.26, at: i * 0.045 })); noise({ f: 5200, d: 0.14, g: 0.16 }); },
+  hit:     () => { tone({ f: 420, f2: 200, d: 0.12, type: 'square', g: 0.26 }); noise({ f: 2600, d: 0.09, g: 0.14 }); },
+  graze:   () => tone({ f: 300, f2: 190, d: 0.1, type: 'triangle', g: 0.18 }),
+  miss:    () => tone({ f: 200, f2: 120, d: 0.16, type: 'triangle', g: 0.15 }),
+  heal:    () => [0,1,2,3].forEach(i => tone({ f: nf(['C5','E5','G5','C6'][i]), d: 0.24, type: 'sine', g: 0.2, at: i * 0.06 })),
+  guard:   () => { tone({ f: 300, f2: 620, d: 0.18, type: 'square', g: 0.2 }); noise({ f: 900, d: 0.12, g: 0.1 }); },
+  hurt:    () => { tone({ f: 260, f2: 90, d: 0.24, type: 'sawtooth', g: 0.3 }); noise({ f: 700, f2: 200, d: 0.2, g: 0.2 }); },
+  break:   () => { noise({ f: 3200, f2: 900, d: 0.1, g: 0.2 }); tone({ f: 1000, f2: 1600, d: 0.07, type: 'square', g: 0.14 }); },
+  rush:    () => tone({ f: 700 + rnd(300), d: 0.04, type: 'square', g: 0.16 }),
+  win:     () => ['C5','E5','G5','C6','G5','C6'].forEach((n, i) => tone({ f: nf(n), d: 0.3, type: 'square', g: 0.26, at: i * 0.11, bus: AU.sg })),
+  lose:    () => ['G4','F4','D#4','C4'].forEach((n, i) => tone({ f: nf(n), d: 0.4, type: 'triangle', g: 0.26, at: i * 0.17 })),
+  gacha:   () => { [0,1,2,3,4,5].forEach(i => tone({ f: 400 * Math.pow(1.18, i), d: 0.1, type: 'square', g: 0.18, at: i * 0.05 })); noise({ f: 6000, d: 0.3, g: 0.12, at: 0.3 }); },
+  gift:    () => ['E5','G5','B5','E6'].forEach((n, i) => tone({ f: nf(n), d: 0.28, type: 'triangle', g: 0.24, at: i * 0.08 })),
+  levelup: () => ['C5','D5','E5','G5','C6'].forEach((n, i) => tone({ f: nf(n), d: 0.24, type: 'square', g: 0.22, at: i * 0.07 })),
+  rainbow: () => { for (let i = 0; i < 10; i++) tone({ f: 500 * Math.pow(1.14, i), d: 0.18, type: 'triangle', g: 0.16, at: i * 0.035 }); noise({ f: 7000, f2: 2000, d: 0.4, g: 0.14 }); }
+};
+// てきの こうげきおん (キャラの ギミックごと)
+const ATK_SFX = {
+  tent:   () => tone({ f: 180, f2: 90, d: 0.22, type: 'sine', g: 0.26 }),                 // ぬめっと
+  jelly:  () => tone({ f: 900, f2: 1250, d: 0.25, type: 'sine', g: 0.2 }),                // ふわふわ
+  spike:  () => noise({ f: 4200, f2: 1200, d: 0.12, g: 0.24, q: 2.5 }),                   // しゅっ
+  pinch:  () => { tone({ f: 1500, d: 0.04, type: 'square', g: 0.2 }); tone({ f: 1200, d: 0.05, type: 'square', g: 0.2, at: 0.07 }); }, // カチカチ
+  charge: () => noise({ f: 300, f2: 2200, d: 0.3, g: 0.26, q: 0.8 }),                     // ごうっ
+  spin:   () => { for (let i = 0; i < 5; i++) tone({ f: 300 + i * 130, d: 0.1, type: 'sawtooth', g: 0.15, at: i * 0.05 }); },
+  zigzag: () => { tone({ f: 1600, f2: 900, d: 0.07, type: 'square', g: 0.18 }); tone({ f: 1400, f2: 2000, d: 0.07, type: 'square', g: 0.16, at: 0.08 }); }, // キィキィ
+  split:  () => { noise({ f: 2600, d: 0.06, g: 0.16 }); noise({ f: 2000, d: 0.06, g: 0.16, at: 0.09 }); },
+  bounce: () => tone({ f: 260, f2: 760, d: 0.18, type: 'sine', g: 0.26 }),                // ぼよん
+  burrow: () => { tone({ f: 110, f2: 60, d: 0.2, type: 'sine', g: 0.3 }); noise({ f: 500, d: 0.16, g: 0.16, ft: 'lowpass' }); }, // ずぼっ
+  grow:   () => tone({ f: 70, f2: 190, d: 0.5, type: 'sawtooth', g: 0.22 }),              // ゴゴゴ
+  rain:   () => noise({ f: 5200, d: 0.05, g: 0.14, q: 3 }),                                // ぱらっ
+  curve:  () => tone({ f: 480, f2: 320, d: 0.16, type: 'square', g: 0.2 }),                // ブヒッ
+  orbit:  () => { for (let i = 0; i < 4; i++) tone({ f: 420 + Math.sin(i) * 200, d: 0.12, type: 'triangle', g: 0.16, at: i * 0.06 }); },
+  hop:    () => { tone({ f: 1500, d: 0.05, type: 'square', g: 0.16 }); tone({ f: 1900, d: 0.05, type: 'square', g: 0.14, at: 0.07 }); }, // ピヨ
+  roll:   () => noise({ f: 900, f2: 1600, d: 0.28, g: 0.16, ft: 'lowpass' }),              // ころころ
+  feint:  () => tone({ f: 150, f2: 105, d: 0.3, type: 'sawtooth', g: 0.26 }),              // モ〜
+  gallop: () => { tone({ f: 260, f2: 150, d: 0.06, type: 'sine', g: 0.3 }); noise({ f: 1400, d: 0.05, g: 0.14, at: 0.02 }); } // パカッ
+};
+function sfx(k) { try { if (SFX[k]) SFX[k](); } catch (e) {} }
+function atkSfx(gim) { try { if (ATK_SFX[gim]) ATK_SFX[gim](); } catch (e) {} }
+// さいしょの タップで おとを おこす
+['pointerdown', 'touchstart', 'click'].forEach(ev =>
+  document.addEventListener(ev, function once() {
+    auStart();
+    if (AU.songId && !AU.timer) { const id = AU.songId; AU.songId = null; playSong(id); }
+    ['pointerdown', 'touchstart', 'click'].forEach(e2 => document.removeEventListener(e2, once));
+  }, { once: false }));
+
+
 const cv = document.getElementById('bt'), cx = cv.getContext('2d');
 
 // ---- キャンバスを あいたスペースに ぴったり合わせる (縦横比 192:320 維持) ----
@@ -327,6 +554,7 @@ let token = null, userName = '';
 let pollBusy = false, failCount = 0;
 
 function kickToLogin(msg) {
+  stopSong();
   token = null;
   mpLeave(true);
   leavePersonal();
@@ -345,8 +573,8 @@ setInterval(async () => {
     const r = await api('dm_check', { p_token: token });
     failCount = 0; dot.classList.remove('bad');
     if (!r.ok && token) {
-      kickToLogin(r.reason === 'ban'
-        ? 'アカウントが ていしされました'
+      kickToLogin(r.reason === 'ban' ? 'アカウントが ていしされました'
+        : r.reason === 'maint' ? '🛠 ' + (r.msg || 'メンテナンス中です')
         : 'セッションが きれました。\nもういちど ログインしてね');
     } else if (r.ok) {
       claimGifts(); // システムからの プレゼントを うけとる
@@ -415,8 +643,65 @@ const cards = [
   { name: 'たいあたり', base: 6,  spd: 1.8, sweet: [0.5, 0.5], rar: 'N',  cd: 0, type: 'atk',  desc: 'きほんの いちげき', starter: true },
   { name: 'プチヒール', base: 10, spd: 2.2, sweet: [0.5, 0.5], rar: 'N',  cd: 2, type: 'heal', desc: 'HPを 10 かいふく', starter: true },
   { name: 'ソナー',     base: 12, rar: 'R',  cd: 1, type: 'ring', ringSpd: 1.0, desc: 'わっかが かさなったら タップ!' },
-  { name: 'ハープーン', base: 17, rar: 'SR', cd: 2, type: 'ring', ringSpd: 1.7, desc: 'はやい わっかを ジャストで つらぬけ!' }
+  { name: 'ハープーン', base: 17, rar: 'SR', cd: 2, type: 'ring', ringSpd: 1.7, desc: 'はやい わっかを ジャストで つらぬけ!' },
+  // ===== ぞくせいの わざ (オーブと おなじ 7ぞくせい × 4こ) =====
+  // 💧 みず
+  { name: 'アクアショット', base: 12, spd: 2.4, sweet: [0.5, 0.5], rar: 'R',  cd: 1, type: 'atk',  el: 'water', desc: 'みずの たまを うちだす' },
+  { name: 'バブルヒール',   base: 14, spd: 2.2, sweet: [0.5, 0.5], rar: 'SR', cd: 3, type: 'heal', el: 'water', desc: 'あわで HPを かいふく' },
+  { name: 'たかなみ',       base: 16, spd: 3.0, sweet: [0.35, 0.6], rar: 'SR', cd: 2, type: 'atk',  el: 'water', desc: 'ひだりの なみが きゅうしょ' },
+  { name: 'しんかいのやり', base: 20, rar: 'UR', cd: 2, type: 'ring', ringSpd: 1.5, el: 'water', desc: 'ふかい うみの ひとつき' },
+  // 🪨 いわ
+  { name: 'ロックボム',     base: 13, spd: 2.6, sweet: [0.5, 0.5], rar: 'R',  cd: 1, type: 'atk',  el: 'stone', desc: 'いわを なげつける' },
+  { name: 'がんせきガード', base: 10, spd: 2.2, sweet: [0.5, 0.5], rar: 'SR', cd: 3, type: 'guard', el: 'stone', desc: 'いわの かべで ふせぐ' },
+  { name: 'だいちのこぶし', base: 18, spd: 3.2, sweet: [0.5, 0.75], rar: 'SR', cd: 2, type: 'atk',  el: 'stone', desc: 'したから つきあげる' },
+  { name: 'グランドブレイク', base: 12, rar: 'UR', cd: 4, type: 'rush', el: 'stone', desc: '5びょう じめんを たたきわれ!' },
+  // 🌿 くさ
+  { name: 'リーフカッター', base: 11, spd: 2.8, sweet: [0.5, 0.5], rar: 'R',  cd: 1, type: 'atk',  el: 'grass', desc: 'はっぱの やいば' },
+  { name: 'めばえヒール',   base: 13, spd: 2.0, sweet: [0.5, 0.5], rar: 'SR', cd: 2, type: 'heal', el: 'grass', desc: 'めが でて HPが かいふく' },
+  { name: 'つるしばり',     base: 15, spd: 2.4, sweet: [0.25, 0.35], rar: 'SR', cd: 2, type: 'atk',  el: 'grass', desc: 'つるで しめあげる' },
+  { name: 'もりのめぐみ',   base: 22, rar: 'UR', cd: 3, type: 'heal', spd: 2.6, sweet: [0.5, 0.5], el: 'grass', desc: 'もりの ちからで だいかいふく' },
+  // 🔥 ほのお
+  { name: 'ファイアボール', base: 13, spd: 2.6, sweet: [0.5, 0.5], rar: 'R',  cd: 1, type: 'atk',  el: 'fire', desc: 'ひのたまを うつ' },
+  { name: 'ばくえん',       base: 19, spd: 3.4, sweet: [0.5, 0.5], rar: 'SR', cd: 2, type: 'atk',  el: 'fire', desc: 'はげしく ばくはつ' },
+  { name: 'ほのおのかべ',   base: 10, spd: 2.4, sweet: [0.5, 0.5], rar: 'SR', cd: 3, type: 'guard', el: 'fire', desc: 'ほのおで こうげきを ふせぐ' },
+  { name: 'インフェルノ',   base: 13, rar: 'UR', cd: 4, type: 'rush', el: 'fire', desc: '5びょう ごうかを たたきこめ!' },
+  // ❄ こおり
+  { name: 'アイスニードル', base: 12, spd: 2.9, sweet: [0.7, 0.3], rar: 'R',  cd: 1, type: 'atk',  el: 'ice', desc: 'こおりの はりを とばす' },
+  { name: 'ブリザード',     base: 18, spd: 3.3, sweet: [0.5, 0.5], rar: 'SR', cd: 2, type: 'atk',  el: 'ice', desc: 'こごえる ふぶき' },
+  { name: 'アイスウォール', base: 10, spd: 2.0, sweet: [0.5, 0.5], rar: 'SR', cd: 3, type: 'guard', el: 'ice', desc: 'こおりの かべで まもる' },
+  { name: 'ひょうけつ',     base: 21, rar: 'UR', cd: 2, type: 'ring', ringSpd: 1.9, el: 'ice', desc: 'こおりつかせる いちげき' },
+  // 🌪 かぜ
+  { name: 'かまいたち',     base: 12, spd: 3.0, sweet: [0.5, 0.5], rar: 'R',  cd: 1, type: 'atk',  el: 'wind', desc: 'かぜの やいばが はしる' },
+  { name: 'そよかぜヒール', base: 12, spd: 2.6, sweet: [0.5, 0.5], rar: 'SR', cd: 2, type: 'heal', el: 'wind', desc: 'やさしい かぜで かいふく' },
+  { name: 'たつまき',       base: 17, spd: 3.5, sweet: [0.5, 0.25], rar: 'SR', cd: 2, type: 'atk',  el: 'wind', desc: 'うずまく かぜ、うえが きゅうしょ' },
+  { name: 'しっぷう',       base: 19, rar: 'UR', cd: 1, type: 'ring', ringSpd: 2.2, el: 'wind', desc: 'とてつもなく はやい わっか' },
+  // ⚡ かみなり
+  { name: 'サンダーボルト', base: 14, spd: 3.0, sweet: [0.5, 0.5], rar: 'R',  cd: 1, type: 'atk',  el: 'thunder', desc: 'いなずまが おちる' },
+  { name: 'でんげき',       base: 20, spd: 3.6, sweet: [0.5, 0.5], rar: 'SR', cd: 2, type: 'atk',  el: 'thunder', desc: 'しびれる でんげき' },
+  { name: 'かみなりのたて', base: 11, spd: 2.6, sweet: [0.5, 0.5], rar: 'SR', cd: 3, type: 'guard', el: 'thunder', desc: 'でんきの たてで ふせぐ' },
+  { name: 'ライトニング',   base: 14, rar: 'UR', cd: 4, type: 'rush', el: 'thunder', desc: '5びょう いなずま れんだ!' },
+  // 🌈 レインボー (レインボーカオス げんていガチャ)
+  { name: 'レインボーブレイド', base: 26, spd: 3.0, sweet: [0.5, 0.5], rar: 'UR', cd: 1, type: 'atk',  el: 'rainbow', rb: true, desc: 'にじいろの やいば' },
+  { name: 'プリズムヒール',     base: 30, spd: 2.4, sweet: [0.5, 0.5], rar: 'UR', cd: 2, type: 'heal', el: 'rainbow', rb: true, desc: 'にじの ひかりで だいかいふく' },
+  { name: 'カオスバースト',     base: 18, rar: 'UR', cd: 3, type: 'rush', el: 'rainbow', rb: true, desc: '5びょう にじいろ ばくれつ!' },
+  { name: 'スペクトラム',       base: 32, rar: 'UR', cd: 2, type: 'ring', ringSpd: 2.0, el: 'rainbow', rb: true, desc: 'にじの わっかを つらぬけ' }
 ];
+// ぞくせいの いろ / なまえ
+const EL_COL = { water: '#4ac6f0', stone: '#c49a5c', grass: '#7cc44a', fire: '#ff6a3c',
+                 ice: '#8fdcff', wind: '#a6f0c6', thunder: '#ffe14a', rainbow: '#ff9a3c' };
+const EL_NAME = { water: '水', stone: '岩', grass: '草', fire: '炎', ice: '氷', wind: '風', thunder: '雷', rainbow: '虹' };
+const RAINBOW_CARDS = cards.map((c, i) => c.rb ? i : -1).filter(i => i >= 0);
+function ownsAllRainbowCards() { return RAINBOW_CARDS.every(ci => S.inv && S.inv.some(x => x.c === ci)); }
+// レインボーカオスの ほのおは 虹の わざを ぜんぶ あつめると ともる
+function rainbowFlameOn() { return ownArmor('rainbow') && ownsAllRainbowCards(); }
+// そうび中の わざと よろいの ぞくせいが あっていたら オーラが でる
+function auraEl() {
+  const a = equippedArmor();
+  if (!a) return null;
+  const ael = a === 'rainbow' ? 'rainbow' : (ARMORS[a].orb || null);
+  if (!ael) return null;
+  return equipList().some(it => cards[it.c] && cards[it.c].el === ael) ? ael : null;
+}
 const GACHA_COST = 80;
 const SELL_PRICE = { N: 20, R: 50, SR: 120, UR: 300 };   // 武器の売値
 const CORE_SELL = [15, 40, 100];                          // コアの売値 (Lv1/2/3)
@@ -503,11 +788,11 @@ const FOES = {
   golem:  { name: 'いわゴーレム', hpB: 60, hpG: 16, atkF: 1.05, gim: 'grow', hue: 22 },
   biggolem: { name: '大ゴーレム', hpB: 140, hpG: 22, atkF: 1.0, gim: 'rain', hue: 22 },
   // WORLD3: みどりの へいげん (それぞれ せんよう攻撃)
-  chick:  { name: 'ヒヨコ',     hpB: 26, hpG: 10, atkF: 0.8, gim: 'rain',   hue: 50 },
+  chick:  { name: 'ヒヨコ',     hpB: 26, hpG: 10, atkF: 0.8, gim: 'hop',    hue: 50 },
   pig:    { name: 'ブタ',       hpB: 44, hpG: 13, atkF: 1.0, gim: 'curve',  hue: 340 },
-  sheep:  { name: 'ヒツジ',     hpB: 38, hpG: 12, atkF: 0.85, gim: 'bounce', hue: 200 },
-  cow:    { name: 'ウシ',       hpB: 52, hpG: 15, atkF: 1.05, gim: 'grow',  hue: 30 },
-  horse:  { name: 'ウマ',       hpB: 46, hpG: 14, atkF: 1.1, gim: 'zigzag', hue: 25 },
+  sheep:  { name: 'ヒツジ',     hpB: 38, hpG: 12, atkF: 0.85, gim: 'roll',  hue: 200 },
+  cow:    { name: 'ウシ',       hpB: 52, hpG: 15, atkF: 1.05, gim: 'feint', hue: 30 },
+  horse:  { name: 'ウマ',       hpB: 46, hpG: 14, atkF: 1.1, gim: 'gallop', hue: 25 },
   bigcow: { name: '大ウシ',     hpB: 150, hpG: 23, atkF: 1.0, gim: 'orbit', hue: 30 }
 };
 const WORLDS = [
@@ -544,8 +829,8 @@ const ATK_MSG = {
   bat: 'コウモリが ジグザグに とびまわる!', spider: 'クモの糸が 2つに わかれた!',
   slime: 'スライムが ぼよんぼよん はねる!', mole: 'モグラが つちに もぐった!',
   golem: 'ゴーレムが ちからを ためている!', biggolem: '大ゴーレムが いわを ふらせる!',
-  chick: 'ヒヨコの みだれ つつき!', pig: 'ブタが まわりこんでくる!', sheep: 'ヒツジが ころころ はねてくる!',
-  cow: 'ウシが つのを かまえて ためている!', horse: 'ウマが あばれ まわる!', bigcow: '大ウシが ぐるっと まわって とっしん!'
+  chick: 'ヒヨコが ぴょんぴょん とんでくる!', pig: 'ブタが まわりこんでくる!', sheep: 'ヒツジが ふちを ころがってくる!',
+  cow: 'ウシが フェイントを かけてきた!', horse: 'ウマの れんぞく けり!', bigcow: '大ウシが ぐるっと まわって とっしん!'
 };
 // 大ボスの会話 (HPが減ると しゃべる)
 const BOSS_TALK = {
@@ -620,7 +905,7 @@ function gainExp(n) {
   S.exp += n;
   let up = false;
   while (S.exp >= needExp()) { S.exp -= needExp(); S.lv++; S.maxhp += 2; up = true; }
-  if (up) { S.hp = maxHP(); say(dlg.textContent + '\n* LV ' + S.lv + ' に あがった! さいだいHP+2!'); }
+  if (up) { S.hp = maxHP(); sfx('levelup'); say(dlg.textContent + '\n* LV ' + S.lv + ' に あがった! さいだいHP+2!'); }
 }
 
 function initGame(saveStr) {
@@ -669,6 +954,7 @@ function initGame(saveStr) {
   joinPersonal();
   claimGifts();
   hud();
+  playSong(songFor('menu'));
   say('* おかえり ' + userName + '。\n* WORLD ' + S.world + '「' + worldName(S.world) + '」\n  WAVE ' + S.wave + ' から さいかいだ。');
 }
 
@@ -712,6 +998,19 @@ function renderScreen() {
   else if (screenKind === 'admin') renderAdmin();
 }
 document.getElementById('screenBack').addEventListener('click', closeScreen);
+// おと ON/OFF
+function refreshSoundBtn() {
+  const b = document.getElementById('soundBtn');
+  b.textContent = AU.on ? '🔊 おと: ON' : '🔇 おと: OFF';
+  b.style.color = AU.on ? '#97e4a0' : '#92b4c4';
+  b.style.borderColor = AU.on ? '#97e4a0' : '#556';
+}
+document.getElementById('soundBtn').addEventListener('click', () => {
+  auToggle(); refreshSoundBtn();
+  if (AU.on) playSong(mode === 'battle' && battle ? songFor(battle.boss ? 'boss' : 'battle') : songFor('menu'));
+  else stopSong();
+});
+refreshSoundBtn();
 drawer.querySelectorAll('[data-scr]').forEach(b =>
   b.addEventListener('click', () => openScreen(b.dataset.scr)));
 
@@ -759,8 +1058,8 @@ function renderDeck() {
     sl.className = 'eqslot' + (it ? ' filled' : '');
     if (it) {
       const c = cards[it.c];
-      sl.style.setProperty('--rc', RAR[c.rar].col);
-      sl.innerHTML = '<span><span class="en" style="color:' + RAR[c.rar].col + '">' + c.name + '</span>' +
+      sl.style.setProperty('--rc', c.el ? EL_COL[c.el] : RAR[c.rar].col);
+      sl.innerHTML = '<span><span class="en" style="color:' + (c.el ? EL_COL[c.el] : RAR[c.rar].col) + '">' + (c.el ? EL_NAME[c.el] + ' ' : '') + c.name + '</span>' +
         '<span class="es">LV' + it.lv + ' / ' + instValText(it) + '</span></span>';
       sl.addEventListener('click', () => { deckDetail = it.id; renderDeck(); });
     } else {
@@ -902,9 +1201,9 @@ function renderDeck() {
     const on = S.equip.includes(it.id);
     const t = document.createElement('button');
     t.className = 'wtile' + (on ? ' eqon' : '');
-    t.style.setProperty('--rc', RAR[c.rar].col);
+    t.style.setProperty('--rc', c.el ? EL_COL[c.el] : RAR[c.rar].col);
     const coreN = it.cores.filter(Boolean).length;
-    t.innerHTML = '<span class="wn" style="color:' + RAR[c.rar].col + '">' + c.name + '</span>' +
+    t.innerHTML = '<span class="wn" style="color:' + (c.el ? EL_COL[c.el] : RAR[c.rar].col) + '">' + (c.el ? EL_NAME[c.el] + ' ' : '') + c.name + '</span>' +
       '<span class="lvl">LV' + it.lv + ' · ' + instValText(it) + '</span>' +
       '<span class="lvl">CD' + cdOfInst(it) + (coreN ? ' · コア' + coreN : '') + '</span>' +
       (on ? '<span class="eqb">そうび中</span>' : '');
@@ -1029,6 +1328,7 @@ function renderCardDetail(it) {
 // ---- ガチャ (ぶき or コア。かぶりも そのまま もちものへ) ----
 // ガチャ けっか ポップアップ
 function showGachaFx(rarName, name, desc, col) {
+  sfx('gacha');
   const box = document.getElementById('gachaFxBox');
   box.style.setProperty('--fxcol', col);
   document.getElementById('gachaFxRar').textContent = '✨ ' + rarName + ' ✨';
@@ -1040,18 +1340,38 @@ document.getElementById('gachaFxOk').addEventListener('click', () => {
   document.getElementById('gachaFx').classList.remove('on');
 });
 
-function doGacha() {
-  if (S.coins < GACHA_COST) { say('* ⛃が たりない… (⛃' + GACHA_COST + ')'); return; }
-  S.coins -= GACHA_COST;
-  // ぶき (スターターいがい) が でる
-  const pool = cards.map((c, i) => c.starter ? -1 : i).filter(i => i >= 0);
-  const ci = pool[rnd(pool.length)];
+const RB_GACHA_COST = 1200; // レインボー げんてい ガチャ
+function giveCard(ci) {
   S.inv.push({ id: S.nextId++, c: ci, lv: 1, cores: [null, null, null] });
   const c = cards[ci];
   const dup = S.inv.filter(x => x.c === ci).length > 1;
-  showGachaFx(RAR[c.rar].name, c.name, c.desc + (dup ? '\n(かぶり: マーケットで うれる)' : '\n あたらしい わざ!'), RAR[c.rar].col);
+  const EL_ICON = { water: '💧', stone: '🪨', grass: '🌿', fire: '🔥', ice: '❄', wind: '🌪', thunder: '⚡', rainbow: '🌈' };
+  const head = (c.el ? EL_ICON[c.el] + ' ' + EL_NAME[c.el] + 'ぞくせい ・ ' : '') + RAR[c.rar].name;
+  showGachaFx(head, c.name,
+    c.desc + (dup ? '\n(かぶり: マーケットで うれる)' : '\n あたらしい わざ!'),
+    c.el ? EL_COL[c.el] : RAR[c.rar].col);
   say('* ✨ ぶき「' + c.name + '」(' + RAR[c.rar].name + ') を ゲット!');
   hud(); save(); renderGacha();
+}
+function doGacha() {
+  if (S.coins < GACHA_COST) { say('* ⛃が たりない… (⛃' + GACHA_COST + ')'); return; }
+  S.coins -= GACHA_COST;
+  // ぶき (スターター と レインボー いがい) が でる
+  const pool = cards.map((c, i) => c.starter ? -1 : i).filter(i => i >= 0);
+  giveCard(pool[rnd(pool.length)]);
+}
+function doRainbowGacha() {
+  if (!ownArmor('rainbow')) { say('* レインボーカオスを てにいれると あそべる!'); return; }
+  if (S.coins < RB_GACHA_COST) { say('* ⛃が たりない… (⛃' + RB_GACHA_COST + ')'); return; }
+  S.coins -= RB_GACHA_COST;
+  // まだ もってない 虹わざを ゆうせん (ぜんぶ そろえやすく)
+  const missing = RAINBOW_CARDS.filter(ci => !S.inv.some(x => x.c === ci));
+  const pool = missing.length ? missing : RAINBOW_CARDS;
+  const before = ownsAllRainbowCards();
+  giveCard(pool[rnd(pool.length)]);
+  if (!before && ownsAllRainbowCards()) {
+    setTimeout(() => say('* 🌈🔥 虹の わざを すべて あつめた!!\n* レインボーカオスに ほのおが ともった!!'), 400);
+  }
 }
 function renderGacha() {
   screenBody.innerHTML = '';
@@ -1071,10 +1391,34 @@ function renderGacha() {
   if (un.length) {
     const uv = document.createElement('div');
     uv.className = 'sub'; uv.style.marginTop = '6px';
-    uv.innerHTML = 'まだ みつけてない ぶき: ' + un.map(c => '<span style="color:' + RAR[c.rar].col + '">???(' + RAR[c.rar].name + ')</span>').join(' ');
+    uv.innerHTML = 'まだ みつけてない ぶき: ' + un.map(c => '<span style="color:' + (c.el ? EL_COL[c.el] : RAR[c.rar].col) + '">???(' + (c.el ? EL_NAME[c.el] : RAR[c.rar].name) + ')</span>').join(' ');
     g0.appendChild(uv);
   }
   screenBody.appendChild(g0);
+  // 🌈 レインボー げんてい ガチャ (レインボーカオスを もっていると でる)
+  if (ownArmor('rainbow')) {
+    const rg = document.createElement('div');
+    rg.className = 'dcard';
+    rg.style.borderColor = '#ff9a3c';
+    rg.style.background = 'linear-gradient(90deg, rgba(255,74,74,.12), rgba(74,198,240,.12))';
+    const got = RAINBOW_CARDS.filter(ci => S.inv.some(x => x.c === ci)).length;
+    rg.innerHTML = '<span class="nm" style="color:#ff9a3c">🌈 レインボー げんてい ガチャ</span>' +
+      '<div class="sub">虹の わざ ' + got + '/' + RAINBOW_CARDS.length + ' しゅるい\n' +
+      (got >= RAINBOW_CARDS.length ? '🔥 ぜんぶ そろった! レインボーカオスに ほのおが ともっている!'
+        : 'かならず 虹わざが でる! (ふつうの ガチャからも でるよ)\nぜんぶ そろえると レインボーカオスに ほのおが ともる!') + '</div>' +
+      '<div>' + RAINBOW_CARDS.map(ci => {
+        const has = S.inv.some(x => x.c === ci);
+        return '<span class="coretag" style="border-color:' + (has ? '#ff9a3c' : '#445') + ';color:' + (has ? '#ffe97a' : '#667') + '">' +
+          (has ? cards[ci].name : '???') + '</span>';
+      }).join(' ') + '</div>';
+    const rb = document.createElement('button');
+    rb.className = 'wide';
+    rb.style.borderColor = '#ff9a3c'; rb.style.color = '#ff9a3c';
+    rb.innerHTML = '▶ 虹ガチャを まわす  <span class="sub">⛃' + RB_GACHA_COST + '</span>';
+    rb.addEventListener('click', doRainbowGacha);
+    rg.appendChild(rb);
+    screenBody.appendChild(rg);
+  }
   // コアショップ (お金でかう)
   Object.keys(CORE_TYPES).forEach(tk => {
     const T = CORE_TYPES[tk];
@@ -1307,72 +1651,244 @@ async function renderRanking() {
 }
 
 // ---- システム管理画面 (システムアカウントのみ) ----
-let adminGiftKind = 'coins';
-function renderAdmin() {
+
+let adminTab = 'gift';        // gift / ban / maint
+let adminPlayers = null;      // よみこんだ プレイヤー一覧
+let adminCardSel = new Set(); // おくる わざ
+async function loadPlayers(force) {
+  if (adminPlayers && !force) return adminPlayers;
+  try { adminPlayers = await api('dm_admin_players', { p_token: token }); }
+  catch (e) { adminPlayers = []; }
+  if (!Array.isArray(adminPlayers)) adminPlayers = [];
+  return adminPlayers;
+}
+async function renderAdmin() {
   if (screenKind !== 'admin') return;
   screenBody.innerHTML = '';
   if (userName !== ADMIN_NAME) {
     screenBody.innerHTML = '<div class="dcard"><div class="sub">この きのうは システムアカウント せんようです。</div></div>';
     return;
   }
-  const d = document.createElement('div');
-  d.className = 'dcard'; d.style.borderColor = '#ff9a3c';
-  d.innerHTML = '<span class="nm" style="color:#ff9a3c">🛠 プレゼントを おくる</span>' +
-    '<div class="sub">あいての なまえと、おくるものを えらんで そうしん。\nとどいた あいてには 上から おしらせが でます。</div>';
-  const nameIn = document.createElement('input');
-  nameIn.maxLength = 12; nameIn.placeholder = 'あいての なまえ';
-  d.appendChild(nameIn);
-  // なにを おくる? (お金 / 装備)
-  const pick = document.createElement('div');
-  pick.className = 'sortrow'; pick.style.marginTop = '8px';
-  const kinds = [['coins', '⛃ おかね'], ['armor', '🛡 装備']];
-  const kbtns = {};
-  kinds.forEach(pr => {
+  // タブ
+  const tabs = document.createElement('div');
+  tabs.className = 'sortrow';
+  [['gift', '🎁 おくる'], ['ban', '🚫 BAN'], ['maint', '🛠 メンテ']].forEach(pr => {
     const b = document.createElement('button');
     b.textContent = pr[1];
-    if (adminGiftKind === pr[0]) b.classList.add('sel');
-    b.addEventListener('click', () => { adminGiftKind = pr[0]; renderAdmin(); });
-    kbtns[pr[0]] = b; pick.appendChild(b);
+    if (adminTab === pr[0]) b.classList.add('sel');
+    b.addEventListener('click', () => { adminTab = pr[0]; renderAdmin(); });
+    tabs.appendChild(b);
   });
-  d.appendChild(pick);
-  // お金の額 or 装備の種類
-  let amountIn, armorSel;
-  if (adminGiftKind === 'coins') {
-    amountIn = document.createElement('input');
-    amountIn.type = 'number'; amountIn.value = '1000'; amountIn.placeholder = 'いくら ⛃';
-    d.appendChild(amountIn);
-  } else {
-    armorSel = document.createElement('div');
-    armorSel.className = 'grow'; armorSel.style.marginTop = '6px';
-    Object.keys(ARMORS).forEach(k => {
-      const bt = document.createElement('button');
-      bt.textContent = ARMORS[k].name.replace('のよろい', '').replace('アーマー', '🦀');
-      bt.dataset.k = k;
-      if (adminGiftItem === k) { bt.style.borderColor = ARMORS[k].col === 'rainbow' ? '#ff9a3c' : ARMORS[k].col; bt.style.color = '#fff'; }
-      bt.addEventListener('click', () => { adminGiftItem = k; renderAdmin(); });
-      armorSel.appendChild(bt);
+  screenBody.appendChild(tabs);
+
+  // ---- あいてを えらぶ (なまえの ところから) ----
+  const dp = document.createElement('div');
+  dp.className = 'dcard'; dp.style.borderColor = '#ff9a3c';
+  dp.innerHTML = '<span class="nm" style="color:#ff9a3c">👤 あいてを えらぶ</span>';
+  const nameIn = document.createElement('input');
+  nameIn.maxLength = 12; nameIn.placeholder = 'なまえ (したから えらべる)';
+  nameIn.value = adminGiftName;
+  nameIn.addEventListener('input', () => { adminGiftName = nameIn.value; });
+  dp.appendChild(nameIn);
+  const plist = document.createElement('div');
+  plist.className = 'pickgrid'; plist.style.maxHeight = '150px'; plist.style.overflowY = 'auto';
+  plist.innerHTML = '<div class="sub">よみこみちゅう…</div>';
+  dp.appendChild(plist);
+  screenBody.appendChild(dp);
+  loadPlayers().then(ps => {
+    if (screenKind !== 'admin') return;
+    plist.innerHTML = '';
+    if (!ps.length) { plist.innerHTML = '<div class="sub">よみこめない (schema.sqlを ぜんぶ 実行してね)</div>'; return; }
+    ps.forEach(pl => {
+      const on = adminGiftName.trim() === pl.name;
+      const b = document.createElement('button');
+      b.className = 'pickbtn' + (on ? ' pickon' : '');
+      if (on) { b.style.borderColor = '#ffe97a'; b.style.background = 'rgba(255,233,122,.2)'; }
+      b.innerHTML = '<span class="ck">' + (on ? '✔' : '') + '</span>' +
+        '<span style="color:' + (pl.banned ? '#f09595' : (on ? '#fff' : '#c7dbe8')) + '">' +
+        pl.name + (pl.banned ? ' 🚫' : '') + '</span>';
+      b.addEventListener('click', () => { adminGiftName = pl.name; nameIn.value = pl.name; renderAdmin(); });
+      plist.appendChild(b);
     });
-    d.appendChild(armorSel);
-  }
-  const send = document.createElement('button');
-  send.className = 'wide'; send.style.borderColor = '#ff9a3c'; send.style.color = '#ff9a3c';
-  send.textContent = '▶ おくる!';
-  send.addEventListener('click', async () => {
-    const nm = nameIn.value.trim();
-    if (!nm) { say('* なまえを いれてね'); return; }
-    const kind = adminGiftKind;
-    const amount = kind === 'coins' ? Math.max(0, parseInt(amountIn.value, 10) || 0) : 0;
-    const item = kind === 'armor' ? adminGiftItem : null;
-    if (kind === 'armor' && !item) { say('* おくる 装備を えらんでね'); return; }
-    send.disabled = true;
-    try {
-      const r = await api('dm_admin_gift', { p_token: token, p_name: nm, p_kind: kind, p_amount: amount, p_item: item });
-      say('* ' + (r.ok ? nm + ' に おくった!' : (r.msg || 'しっぱい')));
-    } catch (e) { say('* つうしんエラー…'); }
-    send.disabled = false;
   });
-  d.appendChild(send);
-  screenBody.appendChild(d);
+
+  const who = () => adminGiftName.trim();
+
+  if (adminTab === 'gift') {
+    // ---- おかね ----
+    const dc = document.createElement('div');
+    dc.className = 'dcard'; dc.style.borderColor = '#ffe97a';
+    dc.innerHTML = '<span class="nm" style="color:#ffe97a">⛃ おかね</span>';
+    const amtRow = document.createElement('div');
+    amtRow.className = 'grow';
+    [0, 500, 1000, 5000, 20000, 100000].forEach(v => {
+      const b = document.createElement('button');
+      b.textContent = v === 0 ? 'なし' : '⛃' + v;
+      if (adminGiftCoins === v) b.classList.add('pickon');
+      b.addEventListener('click', () => { adminGiftCoins = v; renderAdmin(); });
+      amtRow.appendChild(b);
+    });
+    dc.appendChild(amtRow);
+    screenBody.appendChild(dc);
+    // ---- そうび (ふくすう) ----
+    const da = document.createElement('div');
+    da.className = 'dcard'; da.style.borderColor = '#7fd4ff';
+    da.innerHTML = '<span class="nm" style="color:#7fd4ff">🛡 そうび (タップで えらぶ)</span>';
+    const ag = document.createElement('div');
+    ag.className = 'pickgrid';
+    Object.keys(ARMORS).forEach(k => {
+      const A = ARMORS[k];
+      const on = adminGiftSel.has(k);
+      const col = A.col === 'rainbow' ? '#ff9a3c' : A.col;
+      const bt = document.createElement('button');
+      bt.className = 'pickbtn' + (on ? ' pickon' : '');
+      if (on) { bt.style.borderColor = col; bt.style.background = col + '33'; }
+      bt.innerHTML = '<span class="ck">' + (on ? '✔' : '') + '</span>' +
+        '<span style="color:' + (on ? '#fff' : col) + '">' + A.name + '</span>';
+      bt.addEventListener('click', () => {
+        if (adminGiftSel.has(k)) adminGiftSel.delete(k); else adminGiftSel.add(k);
+        renderAdmin();
+      });
+      ag.appendChild(bt);
+    });
+    da.appendChild(ag);
+    screenBody.appendChild(da);
+    // ---- わざ (ふくすう) ----
+    const dw = document.createElement('div');
+    dw.className = 'dcard'; dw.style.borderColor = '#c06af0';
+    dw.innerHTML = '<span class="nm" style="color:#c06af0">🃏 わざ (タップで えらぶ)</span>';
+    const wg = document.createElement('div');
+    wg.className = 'pickgrid';
+    cards.forEach((c, i) => {
+      const on = adminCardSel.has(i);
+      const col = c.el ? EL_COL[c.el] : RAR[c.rar].col;
+      const bt = document.createElement('button');
+      bt.className = 'pickbtn' + (on ? ' pickon' : '');
+      if (on) { bt.style.borderColor = col; bt.style.background = col + '33'; }
+      bt.innerHTML = '<span class="ck">' + (on ? '✔' : '') + '</span>' +
+        '<span style="color:' + (on ? '#fff' : col) + '">' + (c.el ? EL_NAME[c.el] + ' ' : '') + c.name + '</span>';
+      bt.addEventListener('click', () => {
+        if (adminCardSel.has(i)) adminCardSel.delete(i); else adminCardSel.add(i);
+        renderAdmin();
+      });
+      wg.appendChild(bt);
+    });
+    dw.appendChild(wg);
+    screenBody.appendChild(dw);
+    // ---- かくにん + そうしん ----
+    const ds = document.createElement('div');
+    ds.className = 'dcard'; ds.style.borderColor = '#97e4a0';
+    const pa = [...adminGiftSel].map(k => ARMORS[k].name);
+    const pw = [...adminCardSel].map(i => cards[i].name);
+    ds.innerHTML = '<span class="nm" style="color:#97e4a0">おくる ないよう</span>' +
+      '<div>あいて: <b style="color:#ffe97a">' + (who() || '(えらんでね)') + '</b></div>' +
+      '<div>おかね: <b>' + (adminGiftCoins ? '⛃' + adminGiftCoins : 'なし') + '</b></div>' +
+      '<div>そうび: <b>' + (pa.length ? pa.join(' / ') : 'なし') + '</b></div>' +
+      '<div>わざ: <b>' + (pw.length ? pw.join(' / ') : 'なし') + '</b></div>';
+    const send = document.createElement('button');
+    send.className = 'wide'; send.style.borderColor = '#ff9a3c'; send.style.color = '#ff9a3c';
+    send.textContent = '▶ おくる!';
+    send.addEventListener('click', async () => {
+      if (!who()) { say('* あいてを えらんでね'); return; }
+      if (!adminGiftCoins && !adminGiftSel.size && !adminCardSel.size) { say('* おくる ものを えらんでね'); return; }
+      send.disabled = true; send.textContent = 'おくってる…';
+      const done = [], fail = [];
+      try {
+        if (adminGiftCoins > 0) {
+          const r = await api('dm_admin_gift', { p_token: token, p_name: who(), p_kind: 'coins', p_amount: adminGiftCoins, p_item: null });
+          (r.ok ? done : fail).push(r.ok ? '⛃' + adminGiftCoins : (r.msg || 'おかね'));
+        }
+        for (const k of [...adminGiftSel]) {
+          const r = await api('dm_admin_gift', { p_token: token, p_name: who(), p_kind: 'armor', p_amount: 0, p_item: k });
+          (r.ok ? done : fail).push(r.ok ? ARMORS[k].name : (r.msg || k));
+        }
+        for (const i of [...adminCardSel]) {
+          const r = await api('dm_admin_gift', { p_token: token, p_name: who(), p_kind: 'card', p_amount: 0, p_item: String(i) });
+          (r.ok ? done : fail).push(r.ok ? cards[i].name : (r.msg || cards[i].name));
+        }
+        if (fail.length) say('* おくれなかった: ' + fail.join(' / '));
+        else {
+          say('* ' + who() + ' に おくった!\n* ' + done.join(' / '));
+          adminGiftSel.clear(); adminCardSel.clear(); adminGiftCoins = 0;
+        }
+      } catch (e) {
+        say('* つうしんエラー…\n* schema.sql を ぜんぶ 実行したか かくにん!');
+      }
+      renderAdmin();
+    });
+    ds.appendChild(send);
+    screenBody.appendChild(ds);
+
+  } else if (adminTab === 'ban') {
+    const d = document.createElement('div');
+    d.className = 'dcard'; d.style.borderColor = '#f09595';
+    d.innerHTML = '<span class="nm" style="color:#f09595">🚫 アカウントを とめる</span>' +
+      '<div class="sub">とめると すぐ ログアウトされ、ログインできなくなります。</div>' +
+      '<div>あいて: <b style="color:#ffe97a">' + (who() || '(えらんでね)') + '</b></div>';
+    const bb = document.createElement('button');
+    bb.className = 'wide'; bb.style.borderColor = '#f09595'; bb.style.color = '#f09595';
+    bb.textContent = '🚫 BANする';
+    bb.addEventListener('click', async () => {
+      if (!who()) { say('* あいてを えらんでね'); return; }
+      bb.disabled = true;
+      try {
+        const r = await api('dm_admin_ban', { p_token: token, p_name: who(), p_ban: true });
+        say('* ' + (r.ok ? who() + ' を BANした。' : (r.msg || 'しっぱい')));
+      } catch (e) { say('* つうしんエラー… schema.sqlを かくにん!'); }
+      await loadPlayers(true); renderAdmin();
+    });
+    d.appendChild(bb);
+    const ub = document.createElement('button');
+    ub.className = 'wide'; ub.style.borderColor = '#97e4a0'; ub.style.color = '#97e4a0';
+    ub.textContent = '✅ BANを かいじょ';
+    ub.addEventListener('click', async () => {
+      if (!who()) { say('* あいてを えらんでね'); return; }
+      ub.disabled = true;
+      try {
+        const r = await api('dm_admin_ban', { p_token: token, p_name: who(), p_ban: false });
+        say('* ' + (r.ok ? who() + ' の BANを かいじょした。' : (r.msg || 'しっぱい')));
+      } catch (e) { say('* つうしんエラー…'); }
+      await loadPlayers(true); renderAdmin();
+    });
+    d.appendChild(ub);
+    screenBody.appendChild(d);
+
+  } else {
+    const d = document.createElement('div');
+    d.className = 'dcard'; d.style.borderColor = '#ffe97a';
+    d.innerHTML = '<span class="nm" style="color:#ffe97a">🛠 メンテナンスモード</span>' +
+      '<div class="sub">ONにすると システム いがいは あそべなくなります。\n(あそんでいる人も その場で ログアウト)</div>';
+    const msgIn = document.createElement('input');
+    msgIn.maxLength = 40; msgIn.placeholder = 'おしらせ (れい: アップデート中)';
+    msgIn.value = adminMaintMsg;
+    msgIn.addEventListener('input', () => { adminMaintMsg = msgIn.value; });
+    d.appendChild(msgIn);
+    const on = document.createElement('button');
+    on.className = 'wide'; on.style.borderColor = '#f09595'; on.style.color = '#f09595';
+    on.textContent = '🛠 メンテナンスを ONにする';
+    on.addEventListener('click', async () => {
+      on.disabled = true;
+      try {
+        const r = await api('dm_admin_maint', { p_token: token, p_on: true, p_msg: adminMaintMsg || 'メンテナンス中です' });
+        say('* ' + (r.ok ? 'メンテナンスを ONにした。' : (r.msg || 'しっぱい')));
+      } catch (e) { say('* つうしんエラー… schema.sqlを かくにん!'); }
+      renderAdmin();
+    });
+    d.appendChild(on);
+    const off = document.createElement('button');
+    off.className = 'wide'; off.style.borderColor = '#97e4a0'; off.style.color = '#97e4a0';
+    off.textContent = '✅ メンテナンスを OFFにする';
+    off.addEventListener('click', async () => {
+      off.disabled = true;
+      try {
+        const r = await api('dm_admin_maint', { p_token: token, p_on: false, p_msg: adminMaintMsg || '' });
+        say('* ' + (r.ok ? 'メンテナンスを OFFにした。あそべます。' : (r.msg || 'しっぱい')));
+      } catch (e) { say('* つうしんエラー…'); }
+      renderAdmin();
+    });
+    d.appendChild(off);
+    screenBody.appendChild(d);
+  }
 }
 
 // ---- システムからの プレゼント (受けとり) ----
@@ -1380,6 +1896,7 @@ function giftLabel(g) {
   if (g.kind === 'coins') return '⛃' + g.amount;
   if (g.kind === 'armor') return (ARMORS[g.item] ? ARMORS[g.item].name : g.item);
   if (g.kind === 'orb') return (ORB_NAMES[g.item] || g.item) + ' ×' + g.amount;
+  if (g.kind === 'card') return (cards[+g.item] ? cards[+g.item].name : 'わざ');
   return 'プレゼント';
 }
 // html=true なら そのまま、false なら システムからの プレゼント文
@@ -1389,6 +1906,7 @@ function showGift(label, saleHtml) {
   m.className = 'giftMsg';
   m.innerHTML = saleHtml || ('📨 システムから <b>' + label + '</b> が とどきました！');
   el.appendChild(m);
+  sfx('gift');
   setTimeout(() => { m.style.transition = 'opacity .5s'; m.style.opacity = '0'; setTimeout(() => m.remove(), 500); }, 4500);
 }
 function applyGift(g) {
@@ -1401,6 +1919,10 @@ function applyGift(g) {
   if (g.kind === 'coins') S.coins += g.amount;
   else if (g.kind === 'armor') { if (!S.armors) S.armors = {}; S.armors[g.item] = true; }
   else if (g.kind === 'orb') { if (!S.orbs) S.orbs = {}; S.orbs[g.item] = (S.orbs[g.item] || 0) + g.amount; }
+  else if (g.kind === 'card') {
+    const ci = +g.item;
+    if (cards[ci]) S.inv.push({ id: S.nextId++, c: ci, lv: 1, cores: [null, null, null] });
+  }
   showGift(giftLabel(g));
 }
 let giftBusy = false;
@@ -1417,7 +1939,10 @@ async function claimGifts() {
   finally { giftBusy = false; }
 }
 
-let adminGiftItem = 'rainbow';
+let adminGiftName = '';
+let adminMaintMsg = '';
+let adminGiftCoins = 0;
+const adminGiftSel = new Set();
 
 // ================================================================
 // ==== きょうりょくバトル (Supabase Realtime) ====
@@ -1679,6 +2204,7 @@ function resolveRevive() {
   b.state = 'result';
   const g = gradeOf(b);
   b.hitPt = [b.lockX, b.lockY];
+  b.hitEl = null;
   b.hitCol = g.just ? '#ffe97a' : '#f7a8c4';
   b.hitBig = g.just;
   b.dmgT = 46; b.dmgTxt = g.just ? '☆' : '…';
@@ -2038,7 +2564,7 @@ function battleFields() {
     state: 'idle', card: null, cardIdx: -1,
     vx: BX, vdir: 1, hy: BY, hdir: 1, lockX: -1, lockY: -1,
     shake: 0, shakeAmp: 3, flash: 0, hurtT: 0, heartHitT: 0, over: false,
-    hitPt: null, hitCol: '#fff', hitBig: false, dmgTxt: '', dmgT: 0,
+    hitPt: null, hitCol: '#fff', hitEl: null, hitBig: false, dmgTxt: '', dmgT: 0,
     bigTxt: '', bigCol: '#fff', bigT: 0,
     atks: [], defEndT: -1, ink: false, inkT: 0, guard: 0,
     ringR: 0, armorAt: 0, armorFxT: 0,
@@ -2054,6 +2580,7 @@ function startBattle() {
   closeScreen(); closeDrawer();
   showPanel('hand');
   const e = makeEnemy();
+  playSong(songFor(e.boss ? 'boss' : 'battle'));
   battle = Object.assign(e, battleFields());
   renderHand();
   say('* WAVE ' + S.wave + ' — ' + APPEAR_MSG[e.key]);
@@ -2068,6 +2595,7 @@ function startBattleMp(e, w, v) {
   mode = 'battle';
   closeScreen(); closeDrawer();
   showPanel('hand');
+  playSong(songFor(e.boss ? 'boss' : 'battle'));
   battle = Object.assign({}, e, battleFields());
   renderHand(); renderItems();
   if (MP) { MP.lastHp = -1; mpSyncHp(); } // バトル開始時に HPを同期しなおす
@@ -2077,6 +2605,7 @@ function startBattleMp(e, w, v) {
 function winBattle() {
   const b = battle;
   if (!b) return;
+  sfx('win');
   say('* しょうり! ⛃' + b.coin + ' と EXP' + b.exp + ' を てにいれた。');
   S.coins += b.coin;
   gainExp(b.exp);
@@ -2110,6 +2639,7 @@ function winBattle() {
   hud();
   mode = 'inter'; battle = null;
   showPanel('none');
+  playSong(songFor('menu'));
   if (MP && MP.p) {
     MP.ready = false; MP.p.ready = false; MP.p.down = false; MP.p.defend = false;
     say(dlg.textContent + '\n* ふたりの しょうりだ!');
@@ -2119,6 +2649,7 @@ function winBattle() {
 }
 
 function gameOver() {
+  sfx('lose');
   S.coins += 20;
   say('* たおれてしまった…\n* でも ほしのちからで ふっかつした! (すすみは そのまま)\n* なぐさめに ⛃20 ひろった。');
   S.hp = maxHP();
@@ -2126,6 +2657,7 @@ function gameOver() {
   hud();
   mode = 'inter'; battle = null;
   showPanel('none');
+  playSong(songFor('menu'));
   checkInvite();
 }
 
@@ -2143,7 +2675,9 @@ function renderHand() {
                 c.type === 'rush' ? 'MAX ' + powOf(i) * 3 :
                 c.type === 'guard' ? 'ガード' :
                 'ATK ' + powOf(i);
-    b.innerHTML = '<span style="color:' + r.col + '">' + c.name + '</span><span class="sub">' + c.desc + '</span><span class="atk">' + val + '</span>';
+    const ecol = c.el ? EL_COL[c.el] : r.col;
+    b.style.borderColor = ecol;
+    b.innerHTML = '<span style="color:' + ecol + '">' + (c.el ? EL_NAME[c.el] : '') + c.name + '</span><span class="sub">' + c.desc + '</span><span class="atk">' + val + '</span>';
     const cd = battle ? battle.cds[i] : 0;
     if (cd > 0) {
       b.classList.add('cool');
@@ -2165,6 +2699,7 @@ function useCard(i) {
   if (!it) return;
   const c = cards[it.c];
   if (b.cds[i] > 0) { say('* ' + c.name + ' は クールダウンちゅう! (あと' + b.cds[i] + 'ターン)'); return; }
+  sfx('card');
   b.card = c; b.cardIdx = i;
   b.cds[i] = cdOf(i) + 1;
   if (hasCd3Heal(i)) {
@@ -2219,7 +2754,7 @@ cv.addEventListener('click', e => {
   }
   if (mode !== 'battle' || !battle) return;
   const b = battle;
-  if (b.state === 'vert') { b.lockX = b.vx; b.state = 'horiz'; say('* つぎは よこバー!'); return; }
+  if (b.state === 'vert') { b.lockX = b.vx; b.state = 'horiz'; sfx('lock'); say('* つぎは よこバー!'); return; }
   if (b.state === 'horiz') {
     b.lockY = b.hy;
     if (b.card.type === 'heal') resolveHeal();
@@ -2239,6 +2774,7 @@ cv.addEventListener('click', e => {
       b.rushTaps++;
       const inc = pow * 0.10 * (1 + b.rushTaps * 0.04);
       b.rushDmg = Math.min(cap, b.rushDmg + inc);
+      sfx('rush');
       b.shake = 4; b.shakeAmp = 2;
       b.rushTapFx.push({ x: mx, y: my, t: 12 });
     }
@@ -2256,6 +2792,7 @@ cv.addEventListener('click', e => {
           return;
         }
         a.done = true; a.broken = true; a.popT = 12;
+        sfx('break');
         return;
       }
     }
@@ -2275,7 +2812,8 @@ function gradeOf(b) {
 }
 function fxHit(b, g, txt) {
   b.hitPt = [b.lockX, b.lockY];
-  b.hitCol = g.just ? '#ffe97a' : b.card.col || RAR[b.card.rar].col;
+  b.hitEl = b.card && b.card.el ? b.card.el : null;
+  b.hitCol = b.hitEl ? EL_COL[b.hitEl] : (g.just ? '#ffe97a' : b.card.col || RAR[b.card.rar].col);
   b.hitBig = g.just;
   b.shake = g.just ? 18 : (g.mult >= 1 ? 10 : 6);
   b.shakeAmp = g.just ? 5 : (g.mult >= 1 ? 3 : 2);
@@ -2320,6 +2858,7 @@ function resolveHitG(g) {
   const dmg = Math.max(1, Math.round(powOf(b.cardIdx) * g.mult));
   b.ehp = Math.max(0, b.ehp - dmg);
   fxHit(b, g, '' + dmg);
+  sfx(b.card && b.card.el === 'rainbow' ? 'rainbow' : (g.just ? 'just' : g.mult >= 1 ? 'hit' : g.mult >= 0.6 ? 'graze' : 'miss'));
   grassHealOnAttack();
   mpSend('dmg', { dmg: dmg, crit: g.just, card: b.card.name, ehp: b.ehp });
   say('* ' + g.label + ' ' + dmg + ' ダメージ!');
@@ -2337,9 +2876,11 @@ function resolveHeal() {
   const g = gradeOf(b);
   const heal = Math.max(1, Math.round(powOf(b.cardIdx) * g.mult));
   S.hp = Math.min(maxHP(), S.hp + heal);
+  sfx('heal');
   hud();
   mpSend('heal', { amt: heal, hp: S.hp, maxhp: maxHP() });
   b.hitPt = [b.lockX, b.lockY];
+  b.hitEl = null;
   b.hitCol = '#97e4a0'; b.hitBig = g.just;
   b.dmgTxt = '+' + heal; b.dmgT = 46;
   b.bigTxt = g.just ? 'だいかいふく!!' : 'かいふく!'; b.bigCol = '#97e4a0'; b.bigT = 44;
@@ -2356,7 +2897,9 @@ function resolveGuard() {
   b.state = 'result';
   const g = gradeOf(b);
   b.guard = g.just ? 0.8 : g.mult >= 1 ? 0.55 : g.mult >= 0.6 ? 0.3 : 0.15;
+  sfx('guard');
   b.hitPt = [b.lockX, b.lockY];
+  b.hitEl = null;
   b.hitCol = '#7fd4ff'; b.hitBig = g.just;
   b.dmgTxt = '-' + Math.round(b.guard * 100) + '%'; b.dmgT = 46;
   b.bigTxt = g.just ? 'かんぜんガード!!' : 'ガード!'; b.bigCol = '#7fd4ff'; b.bigT = 44;
@@ -2377,7 +2920,8 @@ function resolveRush() {
   const maxed = b.rushDmg >= cap - 0.01;
   b.ehp = Math.max(0, b.ehp - dmg);
   b.hitPt = [HX, BY + BH / 2 - 20];
-  b.hitCol = maxed ? '#ffe97a' : RAR[b.card.rar].col;
+  b.hitEl = b.card && b.card.el ? b.card.el : null;
+  b.hitCol = b.hitEl ? EL_COL[b.hitEl] : (maxed ? '#ffe97a' : RAR[b.card.rar].col);
   b.hitBig = maxed;
   b.shake = maxed ? 20 : 12; b.shakeAmp = maxed ? 6 : 3; b.flash = maxed ? 14 : 8;
   b.dmgTxt = '' + dmg; b.dmgT = 46;
@@ -2401,6 +2945,16 @@ function edgePt(side, pos) {
   return [BX + pos * BW, BY + BH - 2];
 }
 const SIDES = ['top', 'bottom', 'left', 'right'];
+// ふちを 1しゅうする みち (q = 0〜1)
+function borderPt(q) {
+  q = ((q % 1) + 1) % 1;
+  const m = 8, x0 = BX + m, y0 = BY + m, w = BW - m * 2, h = BH - m * 2;
+  const per = (w + h) * 2, d = q * per;
+  if (d < w) return [x0 + d, y0];
+  if (d < w + h) return [x0 + w, y0 + (d - w)];
+  if (d < w * 2 + h) return [x0 + w - (d - w - h), y0 + h];
+  return [x0, y0 + h - (d - w * 2 - h)];
+}
 
 function startDefend() {
   const b = battle;
@@ -2521,6 +3075,31 @@ function startDefend() {
     for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'curve', side: rnd(2) ? 'left' : 'right', pos: 0.2 + Math.random() * 0.6,
       bend: (rnd(2) ? 1 : -1) * (28 + rnd(16)), t: -((i0 + i) * 46 + rnd(20)), dur: dur, dmgF: 0.95 }));
   };
+  // ヒヨコ: ぴょんぴょん とんで ちかづく
+  const addHop = (n, i0) => {
+    const dur = Math.max(84, (boss ? 104 : 116) - L);
+    for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'hop', side: SIDES[rnd(4)], pos: 0.18 + Math.random() * 0.64,
+      hops: 4, t: -((i0 + i) * 46 + rnd(20)), dur: dur, dmgF: 0.8 }));
+  };
+  // ヒツジ: ふちを ころがって から 中へ
+  const addRoll = (n, i0) => {
+    const dur = Math.max(100, (boss ? 124 : 136) - L);
+    for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'roll', startQ: Math.random(), turns: 0.55 + Math.random() * 0.3,
+      spin: 0, t: -((i0 + i) * 52 + rnd(22)), dur: dur, dmgF: 0.9 }));
+  };
+  // ウシ: フェイント (すすんで→さがって→とっしん)
+  const addFeint = (n, i0) => {
+    const dur = Math.max(80, (boss ? 100 : 112) - Math.floor(L * 0.7));
+    for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'feint', side: SIDES[rnd(4)], hitR: 20,
+      t: -((i0 + i) * 86 + rnd(22)), dur: dur, dash: 9, dmgF: 1.1 }));
+  };
+  // ウマ: おなじ ほうこうから れんぞく けり
+  const addGallop = (n, i0) => {
+    const side = SIDES[rnd(4)];
+    const tele = Math.max(26, (boss ? 32 : 38) - Math.floor(L / 3));
+    for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'gallop', side: side, pos: 0.22 + Math.random() * 0.56,
+      t: -((i0 + i) * 24 + rnd(8)), tele: tele, fly: 8, dmgF: 0.75 }));
+  };
   // 大ウシ: ぐるっと まわってから とっこむ
   const addOrbit = (n, i0) => {
     const dur = Math.max(96, (boss ? 120 : 130) - L);
@@ -2581,6 +3160,22 @@ function startDefend() {
       addOrbit(Math.min(6, (boss ? 5 : 4) + Math.floor(L / 8)), 0);
       msg = '* ' + (ATK_MSG[b.key] || 'ぐるぐる まわってくる!') + '\n* まわってから とっこむ 丸を タップ!';
       break;
+    case 'hop':
+      addHop(Math.min(6, (boss ? 4 : 3) + Math.floor(L / 9)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'ぴょんぴょん くる!') + '\n* ぴょんと はねる 丸を タップ!';
+      break;
+    case 'roll':
+      addRoll(Math.min(5, (boss ? 3 : 2) + Math.floor(L / 10)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'ころがってくる!') + '\n* ふちを まわってる うちに タップ!';
+      break;
+    case 'feint':
+      addFeint(Math.min(3, (boss ? 3 : 2) + Math.floor(L / 14)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'フェイント!') + '\n* さがっても また くるぞ! 丸を タップ!';
+      break;
+    case 'gallop':
+      addGallop(Math.min(9, (boss ? 7 : 5) + Math.floor(L / 6)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'れんぞく こうげき!') + '\n* おなじ ほうこうから くる! つづけて タップ!';
+      break;
     case 'spin8': // 大ダコ: 「通常ターン」と「回転ターン」を ランダムで きりかえ
       if (Math.random() < 0.5) {
         // 回転ターン: 8本の触手が 回転しながら 中心へ
@@ -2605,6 +3200,7 @@ function startDefend() {
 function strike(b, a) {
   a.done = true; a.strikeT = 10;
   if (b.over) return;
+  atkSfx(a.gim);
   const eff = armorEff();
   const roll = b.atkMin + rnd(b.atkMax - b.atkMin + 1);
   let ed = Math.max(1, Math.round(roll * (a.dmgF || 1) * (1 - (b.guard || 0)) * (1 - (eff.dmgRed || 0))));
@@ -2620,6 +3216,7 @@ function strike(b, a) {
     return;
   }
   S.hp = Math.max(0, S.hp - ed);
+  sfx('hurt');
   b.hurtT = 12; b.heartHitT = 14;
   hud();
   mpSend('hurt', { dmg: ed, hp: S.hp, arm: equippedArmor() });
@@ -2753,6 +3350,66 @@ function updateDefend(b) {
       a.cx = HX + Math.cos(a.ang) * a.rad; a.cy = HY + Math.sin(a.ang) * a.rad;
       a.active = true;
       if (p >= 1) strike(b, a);
+    } else if (a.gim === 'hop') {
+      // ぴょんぴょん だんだん ちかづく
+      const seg = a.dur / a.hops;
+      const idx = Math.min(a.hops - 1, Math.floor(a.t / seg));
+      const lp = (a.t - idx * seg) / seg;
+      const q = Math.min(1, lp / 0.45);
+      const frac = (idx + q) / a.hops;
+      const [ex, ey] = edgePt(a.side, a.pos);
+      a.cx = ex + (HX - ex) * frac;
+      a.cy = ey + (HY - ey) * frac - Math.sin(q * Math.PI) * 9; // ジャンプの やま
+      a.hopQ = q;
+      a.active = true;
+      if (a.t >= a.dur) strike(b, a);
+    } else if (a.gim === 'roll') {
+      // ふちを ころがって から 中心へ
+      const p = Math.min(1, a.t / a.dur);
+      a.spin = a.t * 0.22;
+      if (p < 0.62) {
+        const q = (a.startQ + (p / 0.62) * a.turns) % 1;
+        const pt = borderPt(q);
+        a.cx = pt[0]; a.cy = pt[1];
+      } else {
+        const pt = borderPt((a.startQ + a.turns) % 1);
+        const q2 = (p - 0.62) / 0.38;
+        a.cx = pt[0] + (HX - pt[0]) * q2;
+        a.cy = pt[1] + (HY - pt[1]) * q2;
+      }
+      a.active = true;
+      if (p >= 1) strike(b, a);
+    } else if (a.gim === 'feint') {
+      const [ex, ey] = edgePt(a.side, 0.5);
+      if (a.t <= a.dur) {
+        const p = a.t / a.dur;
+        let f;
+        if (p < 0.45) f = (p / 0.45) * 0.45;            // すすむ
+        else if (p < 0.7) f = 0.45 - ((p - 0.45) / 0.25) * 0.27; // さがる (フェイント)
+        else f = 0.18 + ((p - 0.7) / 0.3) * 0.42;       // また すすむ
+        a.feintBack = (p >= 0.45 && p < 0.7);
+        a.cx = ex + (HX - ex) * f; a.cy = ey + (HY - ey) * f;
+        a.active = true;
+      } else {
+        a.active = false;
+        const q = (a.t - a.dur) / a.dash;
+        a.cx = ex + (HX - ex) * Math.min(1, q);
+        a.cy = ey + (HY - ey) * Math.min(1, q);
+        if (q >= 1) strike(b, a);
+      }
+    } else if (a.gim === 'gallop') {
+      const [ex, ey] = edgePt(a.side, a.pos);
+      if (a.t <= a.tele) {
+        a.cx = ex + (HX - ex) * 0.18;
+        a.cy = ey + (HY - ey) * 0.18;
+        a.active = true;
+      } else {
+        a.active = false;
+        const q = (a.t - a.tele) / a.fly;
+        a.cx = ex + (HX - ex) * Math.min(1, 0.18 + q * 0.82);
+        a.cy = ey + (HY - ey) * Math.min(1, 0.18 + q * 0.82);
+        if (q >= 1) strike(b, a);
+      }
     }
   }
   if (allDone && !b.over) {
@@ -2783,6 +3440,77 @@ function drawHeartShape(g, x, y, s, col) {
   g.beginPath();
   g.moveTo(x - s, y + s * 0.5); g.lineTo(x, y + s * 1.2); g.lineTo(x + s, y + s * 0.5);
   g.fill();
+}
+let heartFlameOverride = null; // プレビュー用 (null=じっさいの じょうたい)
+// ぞくせい オーラ (そうびの わざと よろいの ぞくせいが あっているとき)
+function drawAura(x, y, g) {
+  g = g || cx;
+  const el = auraEl();
+  if (!el) return;
+  const t = anim;
+  if (el === 'rainbow') {
+    // 🌈 おおきく まわる にじの リング
+    for (let i = 0; i < 14; i++) {
+      const a2 = t / 18 + i * (Math.PI * 2 / 14);
+      const r = 26 + Math.sin(t / 8 + i * 0.7) * 6;
+      const sz = 3.4 + Math.sin(t / 6 + i) * 1.1;
+      g.fillStyle = 'hsla(' + ((t * 4 + i * 26) % 360) + ',95%,63%,.85)';
+      g.beginPath(); g.arc(x + Math.cos(a2) * r, y + Math.sin(a2) * r, sz, 0, 7); g.fill();
+    }
+    // うちがわの ひかりの わ
+    g.strokeStyle = 'hsla(' + ((t * 6) % 360) + ',95%,66%,.5)';
+    g.lineWidth = 2;
+    g.beginPath(); g.arc(x, y, 17 + Math.sin(t / 10) * 3, 0, 7); g.stroke();
+    g.lineWidth = 1;
+    return;
+  }
+  const col = EL_COL[el];
+  g.globalAlpha = 0.5 + Math.sin(t / 10) * 0.18;
+  if (el === 'fire') {                       // ゆらぐ ほのお
+    g.fillStyle = col;
+    for (let i = 0; i < 5; i++) {
+      const fx = x + (i - 2) * 7, fh = 13 + Math.sin(t / 4 + i) * 6;
+      g.beginPath(); g.moveTo(fx - 4, y - 6); g.quadraticCurveTo(fx, y - 6 - fh, fx + 4, y - 6); g.fill();
+    }
+  } else if (el === 'water' || el === 'ice') { // のぼる あわ / きらめき
+    g.fillStyle = col;
+    for (let i = 0; i < 5; i++) {
+      const by = y + 12 - ((t / 2 + i * 13) % 32);
+      g.beginPath(); g.arc(x + (i - 2) * 7.5, by, el === 'ice' ? 2.4 : 3.1, 0, 7); g.fill();
+    }
+  } else if (el === 'grass') {                // まいちる はっぱ
+    g.fillStyle = col;
+    for (let i = 0; i < 4; i++) {
+      const a2 = t / 14 + i * 1.6;
+      g.beginPath(); g.ellipse(x + Math.cos(a2) * 20, y + Math.sin(a2) * 16, 4.2, 2.2, a2, 0, 7); g.fill();
+    }
+  } else if (el === 'wind') {                 // まわる かぜ
+    g.strokeStyle = col; g.lineWidth = 2;
+    for (let i = 0; i < 2; i++) {
+      const a2 = t / 7 + i * Math.PI;
+      g.beginPath(); g.arc(x, y, 20, a2, a2 + 1.8); g.stroke();
+    }
+    g.lineWidth = 1;
+  } else if (el === 'thunder') {              // ばちばち
+    if (t % 10 < 5) {
+      g.strokeStyle = col; g.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        const a2 = (t / 3 + i * 2.1) % (Math.PI * 2);
+        g.beginPath();
+        g.moveTo(x + Math.cos(a2) * 12, y + Math.sin(a2) * 12);
+        g.lineTo(x + Math.cos(a2 + 0.3) * 23, y + Math.sin(a2 + 0.3) * 23);
+        g.stroke();
+      }
+      g.lineWidth = 1;
+    }
+  } else {                                    // いわ: まわる かけら
+    g.fillStyle = col;
+    for (let i = 0; i < 4; i++) {
+      const a2 = t / 18 + i * 1.57;
+      g.fillRect(x + Math.cos(a2) * 20 - 3, y + Math.sin(a2) * 17 - 3, 6, 6);
+    }
+  }
+  g.globalAlpha = 1;
 }
 // skin = 'normal' | 'crab' | ... (装備アーマーで 見た目がかわる)。g を わたせば べつキャンバスにも かける
 function drawHeart(x, y, size, col, skin, g) {
@@ -2879,12 +3607,15 @@ function drawHeart(x, y, size, col, skin, g) {
       g.lineWidth = 1;
     }
   } else if (skin === 'rainbow') {
-    // レインボーカオス: にじいろ グラデーション + ほのお ボー!!
-    for (let i = 0; i < 5; i++) {
-      const fx = x + (i - 2) * s * 0.5, fh = s * (1.4 + Math.sin(anim / 4 + i) * 0.5);
-      g.fillStyle = ['#ff4a4a', '#ff9a3c', '#ffe14a', '#7cc44a', '#4ac6f0'][i];
-      g.globalAlpha = 0.85;
-      g.beginPath(); g.moveTo(fx - s * 0.28, y - s * 0.5); g.quadraticCurveTo(fx, y - s * 0.5 - fh, fx + s * 0.28, y - s * 0.5); g.fill();
+    // レインボーカオス: にじいろ グラデーション (+ 虹わざ ぜんぶで ほのお ボー!!)
+    const flame = (heartFlameOverride === null) ? rainbowFlameOn() : heartFlameOverride;
+    if (flame) {
+      for (let i = 0; i < 5; i++) {
+        const fx = x + (i - 2) * s * 0.5, fh = s * (1.4 + Math.sin(anim / 4 + i) * 0.5);
+        g.fillStyle = ['#ff4a4a', '#ff9a3c', '#ffe14a', '#7cc44a', '#4ac6f0'][i];
+        g.globalAlpha = 0.85;
+        g.beginPath(); g.moveTo(fx - s * 0.28, y - s * 0.5); g.quadraticCurveTo(fx, y - s * 0.5 - fh, fx + s * 0.28, y - s * 0.5); g.fill();
+      }
     }
     g.globalAlpha = 1;
     const hue = (anim * 6) % 360;
@@ -2925,6 +3656,99 @@ function drawSeaBg() {
     cx.strokeStyle = 'rgba(127,212,255,.3)';
     cx.beginPath(); cx.arc(bx3 + Math.sin(anim / 20 + i) * 3, by3, 1.5 + i % 3, 0, 7); cx.stroke();
   }
+}
+
+// ---- どうくつ ----
+function drawCaveBg() {
+  const g = cx.createLinearGradient(0, 0, 0, 320);
+  g.addColorStop(0, '#1d1710');
+  g.addColorStop(1, '#080506');
+  cx.fillStyle = g; cx.fillRect(0, 0, 192, 320);
+  // おくの いわかべ
+  cx.fillStyle = 'rgba(60,44,32,.55)';
+  for (let i = 0; i < 6; i++) {
+    const rx = (i * 41 + 9) % 192, rw = 26 + (i % 3) * 12;
+    cx.beginPath(); cx.arc(rx, 96 + (i % 2) * 40, rw, Math.PI, 0); cx.fill();
+  }
+  // つらら (上から)
+  cx.fillStyle = '#3a2c20';
+  for (let i = 0; i < 9; i++) {
+    const sx = i * 22 + 6, sh = 16 + ((i * 37) % 26);
+    cx.beginPath(); cx.moveTo(sx - 6, 0); cx.lineTo(sx + 6, 0); cx.lineTo(sx, sh); cx.fill();
+  }
+  // 下から せりあがる いわ
+  cx.fillStyle = '#2a1f16';
+  for (let i = 0; i < 6; i++) {
+    const sx = i * 34 + 14, sh = 14 + ((i * 53) % 22);
+    cx.beginPath(); cx.moveTo(sx - 8, 320); cx.lineTo(sx + 8, 320); cx.lineTo(sx, 320 - sh); cx.fill();
+  }
+  // ひかる クリスタル
+  for (let i = 0; i < 5; i++) {
+    const cxp = [18, 62, 108, 150, 178][i], cyp = [58, 34, 62, 40, 66][i];
+    const tw = 0.35 + Math.sin(anim / 18 + i * 1.7) * 0.3;
+    cx.fillStyle = 'rgba(127,212,255,' + tw + ')';
+    cx.beginPath();
+    cx.moveTo(cxp, cyp - 7); cx.lineTo(cxp + 4, cyp); cx.lineTo(cxp, cyp + 7); cx.lineTo(cxp - 4, cyp); cx.fill();
+  }
+  // ちいさい こうもり かげ
+  for (let i = 0; i < 3; i++) {
+    const bx = (anim * (0.5 + i * 0.2) + i * 70) % 220 - 14;
+    const by = 24 + i * 16 + Math.sin(anim / 12 + i) * 5;
+    cx.fillStyle = 'rgba(0,0,0,.45)';
+    const f = Math.sin(anim / 4 + i) * 3;
+    cx.beginPath(); cx.moveTo(bx, by); cx.lineTo(bx - 6, by - f); cx.lineTo(bx - 3, by + 2); cx.fill();
+    cx.beginPath(); cx.moveTo(bx, by); cx.lineTo(bx + 6, by - f); cx.lineTo(bx + 3, by + 2); cx.fill();
+  }
+}
+
+// ---- へいげん ----
+function drawPlainsBg() {
+  const g = cx.createLinearGradient(0, 0, 0, 320);
+  g.addColorStop(0, '#5fb6e8');
+  g.addColorStop(0.55, '#a8dcf0');
+  g.addColorStop(0.56, '#5aa83c');
+  g.addColorStop(1, '#26602a');
+  cx.fillStyle = g; cx.fillRect(0, 0, 192, 320);
+  // おひさま
+  cx.fillStyle = 'rgba(255,240,150,.85)';
+  cx.beginPath(); cx.arc(160, 26, 13, 0, 7); cx.fill();
+  cx.fillStyle = 'rgba(255,240,150,.25)';
+  cx.beginPath(); cx.arc(160, 26, 20 + Math.sin(anim / 25) * 2, 0, 7); cx.fill();
+  // ながれる くも
+  cx.fillStyle = 'rgba(255,255,255,.85)';
+  for (let i = 0; i < 3; i++) {
+    const cxp = ((anim * (0.18 + i * 0.07) + i * 80) % 240) - 30;
+    const cyp = 26 + i * 22;
+    cx.beginPath();
+    cx.arc(cxp, cyp, 9, 0, 7); cx.arc(cxp + 10, cyp + 2, 7, 0, 7); cx.arc(cxp - 9, cyp + 3, 6, 0, 7); cx.fill();
+  }
+  // とおくの おか
+  cx.fillStyle = '#4a9636';
+  cx.beginPath(); cx.arc(40, 190, 52, Math.PI, 0); cx.fill();
+  cx.beginPath(); cx.arc(140, 196, 46, Math.PI, 0); cx.fill();
+  // くさ (ゆれる)
+  cx.strokeStyle = 'rgba(30,86,32,.8)'; cx.lineWidth = 2;
+  for (let i = 0; i < 16; i++) {
+    const gx = (i * 13 + 5) % 192, gy = 190 + (i % 5) * 26;
+    const sw = Math.sin(anim / 14 + i) * 3;
+    cx.beginPath(); cx.moveTo(gx, gy); cx.quadraticCurveTo(gx + sw, gy - 7, gx + sw * 2, gy - 12); cx.stroke();
+  }
+  cx.lineWidth = 1;
+  // おはな
+  const fc = ['#fff', '#ffe97a', '#f7a8c4'];
+  for (let i = 0; i < 7; i++) {
+    const fx = (i * 29 + 12) % 186, fy = 210 + (i % 4) * 24;
+    cx.fillStyle = fc[i % 3];
+    cx.beginPath(); cx.arc(fx, fy, 2.2, 0, 7); cx.fill();
+  }
+}
+
+// いまの ワールドに あわせた はいけい
+function drawBg() {
+  const w = ((S.world - 1) % WORLDS.length);
+  if (w === 1) drawCaveBg();
+  else if (w === 2) drawPlainsBg();
+  else drawSeaBg();
 }
 
 function drawFoe(b) {
@@ -3399,6 +4223,63 @@ function drawAtks(b) {
       cx.fillStyle = tcol; cx.beginPath(); cx.arc(a.cx, a.cy, 6, 0, 7); cx.fill();
       cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(a.cx - 1.5, a.cy - 1.5, 2, 0, 7); cx.fill();
       drawTapCircle(a, a.rad < 24);
+    } else if (a.gim === 'hop') {
+      // ヒヨコ: たまご型 + かげ
+      const air = Math.sin((a.hopQ || 0) * Math.PI);
+      cx.fillStyle = 'rgba(0,0,0,.3)';
+      cx.beginPath(); cx.ellipse(a.cx, a.cy + 9, 5 - air * 2, 2, 0, 0, 7); cx.fill();
+      cx.fillStyle = tcol;
+      cx.beginPath(); cx.ellipse(a.cx, a.cy, 5.5, 6.5, 0, 0, 7); cx.fill();
+      cx.fillStyle = '#f0a030';
+      cx.beginPath(); cx.moveTo(a.cx - 5, a.cy); cx.lineTo(a.cx - 9, a.cy + 1.5); cx.lineTo(a.cx - 5, a.cy + 3); cx.fill();
+      cx.fillStyle = '#03050f'; cx.fillRect(a.cx - 2, a.cy - 3, 2, 2);
+      drawTapCircle(a, a.t / a.dur > 0.72);
+    } else if (a.gim === 'roll') {
+      // ヒツジ: もこもこ玉が ころがる
+      cx.fillStyle = '#f2f0ea';
+      for (let i2 = 0; i2 < 5; i2++) {
+        const a2 = i2 / 5 * Math.PI * 2 + (a.spin || 0);
+        cx.beginPath(); cx.arc(a.cx + Math.cos(a2) * 3.4, a.cy + Math.sin(a2) * 3.4, 3.4, 0, 7); cx.fill();
+      }
+      cx.fillStyle = tdark;
+      cx.beginPath(); cx.arc(a.cx + Math.cos(a.spin || 0) * 2, a.cy + Math.sin(a.spin || 0) * 2, 2.4, 0, 7); cx.fill();
+      drawTapCircle(a, a.t / a.dur > 0.62);
+    } else if (a.gim === 'feint') {
+      if (a.active) {
+        const [ex, ey] = edgePt(a.side, 0.5);
+        cx.strokeStyle = 'rgba(226,75,74,.25)'; cx.lineWidth = 1;
+        cx.beginPath(); cx.moveTo(ex, ey); cx.lineTo(HX, HY); cx.stroke();
+        // つの を かまえた あたま
+        cx.fillStyle = a.feintBack ? tdark : tcol;
+        cx.beginPath(); cx.arc(a.cx, a.cy, 8, 0, 7); cx.fill();
+        cx.strokeStyle = '#e6d9b0'; cx.lineWidth = 2;
+        cx.beginPath(); cx.moveTo(a.cx - 6, a.cy - 4); cx.lineTo(a.cx - 10, a.cy - 8); cx.stroke();
+        cx.beginPath(); cx.moveTo(a.cx + 6, a.cy - 4); cx.lineTo(a.cx + 10, a.cy - 8); cx.stroke();
+        cx.lineWidth = 1;
+        if (a.feintBack) { // フェイント中は わかるように
+          cx.fillStyle = '#7fd4ff'; cx.font = 'bold 8px monospace'; cx.textAlign = 'center';
+          cx.fillText('?', a.cx, a.cy - 12); cx.textAlign = 'left';
+        }
+        drawTapCircle(a, !a.feintBack && a.t / a.dur > 0.7, 14);
+      } else {
+        cx.fillStyle = tcol;
+        cx.beginPath(); cx.arc(a.cx, a.cy, 9, 0, 7); cx.fill();
+      }
+    } else if (a.gim === 'gallop') {
+      const [ex, ey] = edgePt(a.side, a.pos);
+      if (a.t <= a.tele) {
+        cx.strokeStyle = 'rgba(255,255,255,.2)'; cx.setLineDash([3, 4]);
+        cx.beginPath(); cx.moveTo(a.cx, a.cy); cx.lineTo(HX, HY); cx.stroke(); cx.setLineDash([]);
+        cx.fillStyle = tcol; // ひづめ
+        cx.beginPath(); cx.arc(a.cx, a.cy, 4.5, Math.PI * 0.15, Math.PI * 0.85); cx.fill();
+        drawTapCircle(a, a.t > a.tele * 0.55);
+      } else {
+        const ang = Math.atan2(HY - ey, HX - ex);
+        cx.fillStyle = '#e6d9b0';
+        cx.save(); cx.translate(a.cx, a.cy); cx.rotate(ang);
+        cx.beginPath(); cx.moveTo(7, 0); cx.lineTo(-4, -4); cx.lineTo(-4, 4); cx.fill();
+        cx.restore();
+      }
     }
   }
 }
@@ -3438,7 +4319,7 @@ function drawRush(b) {
 
 function drawBattle() {
   const b = battle;
-  drawSeaBg();
+  drawBg();
   cx.fillStyle = '#92b4c4'; cx.font = 'bold 9px monospace';
   cx.fillText('W' + S.world + '-' + S.wave + '/' + WAVES_PER_WORLD, 8, 14);
   if (!MP || !MP.p) { // 協力中は右上になかまパネルが出るので BEST は出さない
@@ -3535,6 +4416,7 @@ function drawBattle() {
     if (!battle) return;
     const beat = 1 + (anim % 40 < 6 ? 0.25 : 0);
     const hcol = b.heartHitT > 0 && b.heartHitT % 4 < 2 ? '#fff' : armorHeartCol();
+    drawAura(HX, HY);  // わざと よろいの ぞくせいが あうと オーラ
     drawHeart(HX, HY, 6 * beat, hcol, heartSkin());
     if (b.heartHitT > 0) b.heartHitT--;
     // クラブ(吸収): きゅうしゅう チャージ表示
@@ -3597,19 +4479,43 @@ function drawBattle() {
   if (b.hitPt && b.dmgT > 0) {
     b.dmgT--;
     const size = b.hitBig ? 1.8 : 1;
-    cx.strokeStyle = b.hitCol; cx.lineWidth = b.hitBig ? 3 : 2;
-    const rays = b.hitBig ? 8 : 5;
-    const rr = (8 + (46 - b.dmgT) * 0.25) * size;
-    for (let k = 0; k < rays; k++) {
-      const ang = k * (Math.PI * 2 / rays) + (b.hitBig ? 0 : 0.5);
-      cx.beginPath();
-      cx.moveTo(b.hitPt[0] + Math.cos(ang) * rr * 0.45, b.hitPt[1] + Math.sin(ang) * rr * 0.45);
-      cx.lineTo(b.hitPt[0] + Math.cos(ang) * rr, b.hitPt[1] + Math.sin(ang) * rr);
-      cx.stroke();
+    const age = 46 - b.dmgT;
+    const rr = (8 + age * 0.25) * size;
+    if (b.hitEl === 'rainbow') {
+      // 🌈 にじいろ スパーク
+      cx.lineWidth = b.hitBig ? 3 : 2;
+      for (let k = 0; k < 14; k++) {
+        const ang = k * (Math.PI * 2 / 14) + age * 0.05;
+        const len = rr * (1.1 + ((k * 7) % 5) * 0.22);
+        cx.strokeStyle = 'hsla(' + ((k * 26 + anim * 6) % 360) + ',95%,62%,' + Math.min(1, b.dmgT / 24) + ')';
+        cx.beginPath();
+        cx.moveTo(b.hitPt[0] + Math.cos(ang) * rr * 0.3, b.hitPt[1] + Math.sin(ang) * rr * 0.3);
+        cx.lineTo(b.hitPt[0] + Math.cos(ang) * len, b.hitPt[1] + Math.sin(ang) * len);
+        cx.stroke();
+      }
+      for (let k = 0; k < 6; k++) {
+        const a2 = anim / 5 + k;
+        cx.fillStyle = 'hsla(' + ((k * 60 + anim * 8) % 360) + ',95%,66%,.9)';
+        cx.beginPath(); cx.arc(b.hitPt[0] + Math.cos(a2) * rr * 0.8, b.hitPt[1] + Math.sin(a2) * rr * 0.8, 2, 0, 7); cx.fill();
+      }
+      cx.lineWidth = 1;
+      cx.fillStyle = '#fff';
+      cx.fillRect(b.hitPt[0] - 3, b.hitPt[1] - 3, 6, 6);
+      cx.fillStyle = b.hitCol;
+    } else {
+      cx.strokeStyle = b.hitCol; cx.lineWidth = b.hitBig ? 3 : 2;
+      const rays = b.hitBig ? 8 : 5;
+      for (let k = 0; k < rays; k++) {
+        const ang = k * (Math.PI * 2 / rays) + (b.hitBig ? 0 : 0.5);
+        cx.beginPath();
+        cx.moveTo(b.hitPt[0] + Math.cos(ang) * rr * 0.45, b.hitPt[1] + Math.sin(ang) * rr * 0.45);
+        cx.lineTo(b.hitPt[0] + Math.cos(ang) * rr, b.hitPt[1] + Math.sin(ang) * rr);
+        cx.stroke();
+      }
+      cx.lineWidth = 1;
+      cx.fillStyle = b.hitCol;
+      cx.fillRect(b.hitPt[0] - 3, b.hitPt[1] - 3, 6, 6);
     }
-    cx.lineWidth = 1;
-    cx.fillStyle = b.hitCol;
-    cx.fillRect(b.hitPt[0] - 3, b.hitPt[1] - 3, 6, 6);
     cx.font = 'bold 13px monospace';
     cx.fillText(b.dmgTxt, b.hitPt[0] + 8, b.hitPt[1] - 6 - (46 - b.dmgT) * 0.35);
   }
@@ -3642,7 +4548,7 @@ function drawBattle() {
 }
 
 function drawInter() {
-  drawSeaBg();
+  drawBg();
   cx.textAlign = 'center';
   cx.fillStyle = '#92b4c4'; cx.font = '9px monospace';
   cx.fillText('- DECK & MERCY -', 96, 100);
