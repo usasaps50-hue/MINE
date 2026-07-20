@@ -1115,9 +1115,10 @@ function giveCard(ci) {
   S.inv.push({ id: S.nextId++, c: ci, lv: 1, cores: [null, null, null] });
   const c = cards[ci];
   const dup = S.inv.filter(x => x.c === ci).length > 1;
-  const elTag = c.el ? EL_NAME[c.el] + 'ぞくせい / ' : '';
-  showGachaFx(RAR[c.rar].name, c.name,
-    elTag + c.desc + (dup ? '\n(かぶり: マーケットで うれる)' : '\n あたらしい わざ!'),
+  const EL_ICON = { water: '💧', stone: '🪨', grass: '🌿', fire: '🔥', ice: '❄', wind: '🌪', thunder: '⚡', rainbow: '🌈' };
+  const head = (c.el ? EL_ICON[c.el] + ' ' + EL_NAME[c.el] + 'ぞくせい ・ ' : '') + RAR[c.rar].name;
+  showGachaFx(head, c.name,
+    c.desc + (dup ? '\n(かぶり: マーケットで うれる)' : '\n あたらしい わざ!'),
     c.el ? EL_COL[c.el] : RAR[c.rar].col);
   say('* ✨ ぶき「' + c.name + '」(' + RAR[c.rar].name + ') を ゲット!');
   hud(); save(); renderGacha();
@@ -1126,7 +1127,7 @@ function doGacha() {
   if (S.coins < GACHA_COST) { say('* ⛃が たりない… (⛃' + GACHA_COST + ')'); return; }
   S.coins -= GACHA_COST;
   // ぶき (スターター と レインボー いがい) が でる
-  const pool = cards.map((c, i) => (c.starter || c.rb) ? -1 : i).filter(i => i >= 0);
+  const pool = cards.map((c, i) => c.starter ? -1 : i).filter(i => i >= 0);
   giveCard(pool[rnd(pool.length)]);
 }
 function doRainbowGacha() {
@@ -1156,7 +1157,7 @@ function renderGacha() {
   g0.appendChild(pb);
   const owned = {};
   S.inv.forEach(x => { owned[x.c] = true; });
-  const un = cards.filter((c, i) => !c.starter && !c.rb && !owned[i]);
+  const un = cards.filter((c, i) => !c.starter && !owned[i]);
   if (un.length) {
     const uv = document.createElement('div');
     uv.className = 'sub'; uv.style.marginTop = '6px';
@@ -1174,7 +1175,7 @@ function renderGacha() {
     rg.innerHTML = '<span class="nm" style="color:#ff9a3c">🌈 レインボー げんてい ガチャ</span>' +
       '<div class="sub">虹の わざ ' + got + '/' + RAINBOW_CARDS.length + ' しゅるい\n' +
       (got >= RAINBOW_CARDS.length ? '🔥 ぜんぶ そろった! レインボーカオスに ほのおが ともっている!'
-        : 'ぜんぶ そろえると レインボーカオスに ほのおが ともる!') + '</div>' +
+        : 'かならず 虹わざが でる! (ふつうの ガチャからも でるよ)\nぜんぶ そろえると レインボーカオスに ほのおが ともる!') + '</div>' +
       '<div>' + RAINBOW_CARDS.map(ci => {
         const has = S.inv.some(x => x.c === ci);
         return '<span class="coretag" style="border-color:' + (has ? '#ff9a3c' : '#445') + ';color:' + (has ? '#ffe97a' : '#667') + '">' +
@@ -3203,12 +3204,19 @@ function drawAura(x, y, g) {
   if (!el) return;
   const t = anim;
   if (el === 'rainbow') {
-    for (let i = 0; i < 8; i++) {
-      const a2 = t / 16 + i * Math.PI / 4;
-      const r = 15 + Math.sin(t / 9 + i) * 4;
-      g.fillStyle = 'hsla(' + ((t * 4 + i * 45) % 360) + ',95%,62%,.75)';
-      g.beginPath(); g.arc(x + Math.cos(a2) * r, y + Math.sin(a2) * r, 2.2, 0, 7); g.fill();
+    // 🌈 おおきく まわる にじの リング
+    for (let i = 0; i < 14; i++) {
+      const a2 = t / 18 + i * (Math.PI * 2 / 14);
+      const r = 26 + Math.sin(t / 8 + i * 0.7) * 6;
+      const sz = 3.4 + Math.sin(t / 6 + i) * 1.1;
+      g.fillStyle = 'hsla(' + ((t * 4 + i * 26) % 360) + ',95%,63%,.85)';
+      g.beginPath(); g.arc(x + Math.cos(a2) * r, y + Math.sin(a2) * r, sz, 0, 7); g.fill();
     }
+    // うちがわの ひかりの わ
+    g.strokeStyle = 'hsla(' + ((t * 6) % 360) + ',95%,66%,.5)';
+    g.lineWidth = 2;
+    g.beginPath(); g.arc(x, y, 17 + Math.sin(t / 10) * 3, 0, 7); g.stroke();
+    g.lineWidth = 1;
     return;
   }
   const col = EL_COL[el];
@@ -3216,26 +3224,26 @@ function drawAura(x, y, g) {
   if (el === 'fire') {                       // ゆらぐ ほのお
     g.fillStyle = col;
     for (let i = 0; i < 5; i++) {
-      const fx = x + (i - 2) * 5, fh = 9 + Math.sin(t / 4 + i) * 5;
-      g.beginPath(); g.moveTo(fx - 3, y - 6); g.quadraticCurveTo(fx, y - 6 - fh, fx + 3, y - 6); g.fill();
+      const fx = x + (i - 2) * 7, fh = 13 + Math.sin(t / 4 + i) * 6;
+      g.beginPath(); g.moveTo(fx - 4, y - 6); g.quadraticCurveTo(fx, y - 6 - fh, fx + 4, y - 6); g.fill();
     }
   } else if (el === 'water' || el === 'ice') { // のぼる あわ / きらめき
     g.fillStyle = col;
     for (let i = 0; i < 5; i++) {
-      const by = y + 8 - ((t / 2 + i * 11) % 24);
-      g.beginPath(); g.arc(x + (i - 2) * 5.5, by, el === 'ice' ? 1.6 : 2.2, 0, 7); g.fill();
+      const by = y + 12 - ((t / 2 + i * 13) % 32);
+      g.beginPath(); g.arc(x + (i - 2) * 7.5, by, el === 'ice' ? 2.4 : 3.1, 0, 7); g.fill();
     }
   } else if (el === 'grass') {                // まいちる はっぱ
     g.fillStyle = col;
     for (let i = 0; i < 4; i++) {
       const a2 = t / 14 + i * 1.6;
-      g.beginPath(); g.ellipse(x + Math.cos(a2) * 14, y + Math.sin(a2) * 11, 3, 1.6, a2, 0, 7); g.fill();
+      g.beginPath(); g.ellipse(x + Math.cos(a2) * 20, y + Math.sin(a2) * 16, 4.2, 2.2, a2, 0, 7); g.fill();
     }
   } else if (el === 'wind') {                 // まわる かぜ
     g.strokeStyle = col; g.lineWidth = 2;
     for (let i = 0; i < 2; i++) {
       const a2 = t / 7 + i * Math.PI;
-      g.beginPath(); g.arc(x, y, 14, a2, a2 + 1.8); g.stroke();
+      g.beginPath(); g.arc(x, y, 20, a2, a2 + 1.8); g.stroke();
     }
     g.lineWidth = 1;
   } else if (el === 'thunder') {              // ばちばち
@@ -3244,8 +3252,8 @@ function drawAura(x, y, g) {
       for (let i = 0; i < 3; i++) {
         const a2 = (t / 3 + i * 2.1) % (Math.PI * 2);
         g.beginPath();
-        g.moveTo(x + Math.cos(a2) * 9, y + Math.sin(a2) * 9);
-        g.lineTo(x + Math.cos(a2 + 0.3) * 16, y + Math.sin(a2 + 0.3) * 16);
+        g.moveTo(x + Math.cos(a2) * 12, y + Math.sin(a2) * 12);
+        g.lineTo(x + Math.cos(a2 + 0.3) * 23, y + Math.sin(a2 + 0.3) * 23);
         g.stroke();
       }
       g.lineWidth = 1;
@@ -3254,7 +3262,7 @@ function drawAura(x, y, g) {
     g.fillStyle = col;
     for (let i = 0; i < 4; i++) {
       const a2 = t / 18 + i * 1.57;
-      g.fillRect(x + Math.cos(a2) * 14 - 2, y + Math.sin(a2) * 12 - 2, 4, 4);
+      g.fillRect(x + Math.cos(a2) * 20 - 3, y + Math.sin(a2) * 17 - 3, 6, 6);
     }
   }
   g.globalAlpha = 1;
