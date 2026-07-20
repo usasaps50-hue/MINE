@@ -254,6 +254,7 @@
   <button class="pbtn" data-scr="friends">👥 フレンド</button>
   <button class="pbtn" data-scr="room">⚔ きょうりょくバトル</button>
   <button class="pbtn" data-scr="admin" id="adminBtn" style="display:none;border-color:#ff9a3c;color:#ff9a3c">🛠 システム</button>
+  <button class="pbtn" id="soundBtn">🔊 おと: ON</button>
   <button class="pbtn" id="logoutBtn">🚪 ログアウト</button>
 </div>
 
@@ -301,6 +302,219 @@
   }
 })();
 
+
+// ================================================================
+// ==== おと (BGM / こうかおん) — Web Audio で その場で つくる ====
+// ================================================================
+const AU = { ctx: null, master: null, mg: null, sg: null, on: true, songId: null,
+             timer: null, step: 0, nextT: 0, song: null };
+try { AU.on = localStorage.getItem('dm_sound') !== '0'; } catch (e) {}
+
+const NOTE = { C:0, 'C#':1, D:2, 'D#':3, E:4, F:5, 'F#':6, G:7, 'G#':8, A:9, 'A#':10, B:11 };
+function nf(n) { // 'A4' → しゅうはすう
+  if (!n) return 0;
+  const m = /^([A-G]#?)(-?\d)$/.exec(n);
+  if (!m) return 0;
+  return 440 * Math.pow(2, (NOTE[m[1]] + (+m[2] - 4) * 12 - 9) / 12);
+}
+function auStart() { // さいしょの タップで おこす (ブラウザの きまり)
+  if (AU.ctx) { if (AU.ctx.state === 'suspended') AU.ctx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  AU.ctx = new AC();
+  AU.master = AU.ctx.createGain(); AU.master.gain.value = AU.on ? 0.9 : 0;
+  AU.master.connect(AU.ctx.destination);
+  AU.mg = AU.ctx.createGain(); AU.mg.gain.value = 0.30; AU.mg.connect(AU.master); // BGM
+  AU.sg = AU.ctx.createGain(); AU.sg.gain.value = 0.55; AU.sg.connect(AU.master); // こうかおん
+}
+function auToggle() {
+  AU.on = !AU.on;
+  try { localStorage.setItem('dm_sound', AU.on ? '1' : '0'); } catch (e) {}
+  if (AU.master) AU.master.gain.value = AU.on ? 0.9 : 0;
+  if (AU.on) { auStart(); if (AU.songId) { const id = AU.songId; AU.songId = null; playSong(id); } }
+  return AU.on;
+}
+// おと 1つ
+function tone(o) {
+  if (!AU.ctx || !AU.on) return;
+  const t0 = AU.ctx.currentTime + (o.at || 0);
+  const g = AU.ctx.createGain();
+  const osc = AU.ctx.createOscillator();
+  osc.type = o.type || 'square';
+  osc.frequency.setValueAtTime(Math.max(20, o.f), t0);
+  if (o.f2) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.f2), t0 + o.d);
+  const vol = (o.g == null ? 0.3 : o.g);
+  const atk = o.atk == null ? 0.005 : o.atk;
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t0 + atk);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.d);
+  osc.connect(g); g.connect(o.bus || AU.sg);
+  osc.start(t0); osc.stop(t0 + o.d + 0.02);
+}
+// ノイズ (ドラム/しゅわー)
+let NOISEBUF = null;
+function noise(o) {
+  if (!AU.ctx || !AU.on) return;
+  if (!NOISEBUF) {
+    NOISEBUF = AU.ctx.createBuffer(1, AU.ctx.sampleRate * 1.2, AU.ctx.sampleRate);
+    const d = NOISEBUF.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const t0 = AU.ctx.currentTime + (o.at || 0);
+  const src = AU.ctx.createBufferSource(); src.buffer = NOISEBUF;
+  const bp = AU.ctx.createBiquadFilter();
+  bp.type = o.ft || 'bandpass';
+  bp.frequency.setValueAtTime(o.f || 1200, t0);
+  if (o.f2) bp.frequency.exponentialRampToValueAtTime(Math.max(60, o.f2), t0 + o.d);
+  bp.Q.value = o.q == null ? 1.2 : o.q;
+  const g = AU.ctx.createGain();
+  const vol = o.g == null ? 0.25 : o.g;
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.d);
+  src.connect(bp); bp.connect(g); g.connect(o.bus || AU.sg);
+  src.start(t0); src.stop(t0 + o.d + 0.02);
+}
+
+// ---- きょく (16ステップ × パターン) ----
+// _ = やすみ。lead/bass は おとの なまえ、drum は k(バスドラ) s(スネア) h(ハイハット)
+const SONGS = {
+  seaMenu: { bpm: 96, lead: 'triangle', bassT: 'sine', vol: 0.9,
+    lead1: ['E5','_','B4','_','C5','_','B4','_','A4','_','B4','_','G4','_','_','_',
+            'D5','_','A4','_','B4','_','A4','_','G4','_','A4','_','E4','_','_','_'],
+    bass1: ['E2','_','_','_','B2','_','_','_','C3','_','_','_','G2','_','_','_',
+            'D3','_','_','_','A2','_','_','_','G2','_','_','_','E2','_','_','_'],
+    drum1: ['_','_','h','_','_','_','h','_','_','_','h','_','_','_','h','_',
+            '_','_','h','_','_','_','h','_','_','_','h','_','_','_','h','_'] },
+  seaBattle: { bpm: 148, lead: 'square', bassT: 'sawtooth', vol: 1,
+    lead1: ['E5','E5','_','G5','A5','_','G5','E5','D5','_','E5','_','B4','_','_','_',
+            'E5','E5','_','G5','B5','_','A5','G5','A5','_','B5','_','E5','_','_','_'],
+    bass1: ['E2','E2','E2','_','E2','_','G2','_','A2','A2','A2','_','B2','_','B2','_',
+            'E2','E2','E2','_','E2','_','G2','_','C3','_','B2','_','A2','_','_','_'],
+    drum1: ['k','_','h','s','k','_','h','s','k','_','h','s','k','h','h','s',
+            'k','_','h','s','k','_','h','s','k','_','h','s','k','h','s','s'] },
+  caveMenu: { bpm: 78, lead: 'triangle', bassT: 'sine', vol: 0.85,
+    lead1: ['A4','_','_','C5','_','_','B4','_','A4','_','_','_','F4','_','_','_',
+            'G4','_','_','A4','_','_','E4','_','F4','_','_','_','D4','_','_','_'],
+    bass1: ['A1','_','_','_','_','_','_','_','F1','_','_','_','_','_','_','_',
+            'G1','_','_','_','_','_','_','_','D2','_','_','_','_','_','_','_'],
+    drum1: ['_','_','_','_','_','_','h','_','_','_','_','_','_','_','h','_',
+            '_','_','_','_','_','_','h','_','_','_','_','_','_','_','h','_'] },
+  caveBattle: { bpm: 138, lead: 'square', bassT: 'sawtooth', vol: 1,
+    lead1: ['A4','_','A4','_','C5','_','B4','_','A4','_','G4','_','E4','_','_','_',
+            'F4','_','F4','_','A4','_','G4','_','F4','_','E4','_','D4','_','_','_'],
+    bass1: ['A1','A1','_','A1','_','A1','_','_','F1','F1','_','F1','_','F1','_','_',
+            'G1','G1','_','G1','_','G1','_','_','E2','_','E2','_','A1','_','_','_'],
+    drum1: ['k','_','_','h','s','_','k','_','k','_','_','h','s','_','h','h',
+            'k','_','_','h','s','_','k','_','k','h','k','h','s','s','_','_'] },
+  plainsMenu: { bpm: 108, lead: 'triangle', bassT: 'sine', vol: 0.9,
+    lead1: ['G4','_','B4','_','D5','_','B4','_','C5','_','E5','_','D5','_','_','_',
+            'A4','_','C5','_','E5','_','C5','_','G4','_','B4','_','G4','_','_','_'],
+    bass1: ['G2','_','_','_','D3','_','_','_','C3','_','_','_','G2','_','_','_',
+            'A2','_','_','_','E3','_','_','_','C3','_','_','_','D3','_','_','_'],
+    drum1: ['_','_','h','_','s','_','h','_','_','_','h','_','s','_','h','_',
+            '_','_','h','_','s','_','h','_','_','_','h','_','s','_','h','h'] },
+  plainsBattle: { bpm: 156, lead: 'square', bassT: 'sawtooth', vol: 1,
+    lead1: ['G5','_','D5','G5','_','B5','A5','G5','E5','_','G5','_','D5','_','_','_',
+            'C5','_','G5','C6','_','B5','A5','G5','A5','_','B5','_','G5','_','_','_'],
+    bass1: ['G2','G2','_','G2','D3','_','G2','_','C3','C3','_','C3','G2','_','G2','_',
+            'A2','A2','_','A2','E3','_','A2','_','D3','_','D3','_','G2','_','_','_'],
+    drum1: ['k','_','h','s','_','k','h','s','k','_','h','s','k','k','h','s',
+            'k','_','h','s','_','k','h','s','k','_','h','s','k','h','s','s'] },
+  boss: { bpm: 164, lead: 'sawtooth', bassT: 'sawtooth', vol: 1.05,
+    lead1: ['D5','_','D5','D#5','D5','_','A4','_','D5','_','F5','_','E5','_','D5','_',
+            'A#4','_','A#4','B4','A#4','_','F4','_','A#4','_','D5','_','C5','_','A#4','_'],
+    bass1: ['D2','D2','D2','D2','D2','D2','D2','D2','A#1','A#1','A#1','A#1','A#1','A#1','A#1','A#1',
+            'G1','G1','G1','G1','G1','G1','G1','G1','A1','A1','A1','A1','A1','A1','A1','A1'],
+    drum1: ['k','h','s','h','k','h','s','h','k','h','s','h','k','k','s','s',
+            'k','h','s','h','k','h','s','h','k','h','s','h','s','s','s','s'] }
+};
+function songFor(kind) { // kind: 'menu' | 'battle' | 'boss'
+  if (kind === 'boss') return 'boss';
+  const w = ((S && S.world ? S.world : 1) - 1) % 3;
+  return (w === 1 ? 'cave' : w === 2 ? 'plains' : 'sea') + (kind === 'battle' ? 'Battle' : 'Menu');
+}
+function playSong(id) {
+  if (!AU.on) { AU.songId = id; return; }
+  auStart();
+  if (!AU.ctx) return;
+  if (AU.songId === id && AU.timer) return;
+  stopSong();
+  AU.songId = id; AU.song = SONGS[id]; AU.step = 0;
+  if (!AU.song) return;
+  AU.nextT = AU.ctx.currentTime + 0.06;
+  const stepDur = 60 / AU.song.bpm / 4; // 16ぶおんぷ
+  AU.timer = setInterval(() => {
+    if (!AU.ctx || !AU.song) return;
+    while (AU.nextT < AU.ctx.currentTime + 0.18) {
+      const sg = AU.song, i = AU.step % sg.lead1.length;
+      const at = AU.nextT - AU.ctx.currentTime;
+      const ln = sg.lead1[i];
+      if (ln && ln !== '_') tone({ f: nf(ln), d: stepDur * 1.7, type: sg.lead, g: 0.20 * sg.vol, at: at, bus: AU.mg });
+      const bn = sg.bass1[i];
+      if (bn && bn !== '_') tone({ f: nf(bn), d: stepDur * 1.5, type: sg.bassT, g: 0.24 * sg.vol, at: at, bus: AU.mg });
+      const dn = sg.drum1[i];
+      if (dn === 'k') tone({ f: 150, f2: 46, d: 0.15, type: 'sine', g: 0.5, at: at, bus: AU.mg });
+      else if (dn === 's') noise({ f: 1700, d: 0.11, g: 0.20, at: at, q: 0.9, bus: AU.mg });
+      else if (dn === 'h') noise({ f: 7000, d: 0.035, g: 0.09, at: at, q: 1.5, bus: AU.mg });
+      AU.nextT += stepDur; AU.step++;
+    }
+  }, 40);
+}
+function stopSong() { if (AU.timer) { clearInterval(AU.timer); AU.timer = null; } AU.songId = null; AU.song = null; }
+
+// ---- こうかおん ----
+const SFX = {
+  tap:     () => tone({ f: 640, d: 0.06, type: 'square', g: 0.18 }),
+  lock:    () => tone({ f: 880, f2: 1200, d: 0.08, type: 'square', g: 0.22 }),
+  card:    () => { tone({ f: 520, d: 0.06, type: 'square', g: 0.2 }); tone({ f: 780, d: 0.09, type: 'square', g: 0.16, at: 0.05 }); },
+  just:    () => { [0,1,2].forEach(i => tone({ f: 880 * Math.pow(1.26, i), d: 0.16, type: 'square', g: 0.26, at: i * 0.045 })); noise({ f: 5200, d: 0.14, g: 0.16 }); },
+  hit:     () => { tone({ f: 420, f2: 200, d: 0.12, type: 'square', g: 0.26 }); noise({ f: 2600, d: 0.09, g: 0.14 }); },
+  graze:   () => tone({ f: 300, f2: 190, d: 0.1, type: 'triangle', g: 0.18 }),
+  miss:    () => tone({ f: 200, f2: 120, d: 0.16, type: 'triangle', g: 0.15 }),
+  heal:    () => [0,1,2,3].forEach(i => tone({ f: nf(['C5','E5','G5','C6'][i]), d: 0.24, type: 'sine', g: 0.2, at: i * 0.06 })),
+  guard:   () => { tone({ f: 300, f2: 620, d: 0.18, type: 'square', g: 0.2 }); noise({ f: 900, d: 0.12, g: 0.1 }); },
+  hurt:    () => { tone({ f: 260, f2: 90, d: 0.24, type: 'sawtooth', g: 0.3 }); noise({ f: 700, f2: 200, d: 0.2, g: 0.2 }); },
+  break:   () => { noise({ f: 3200, f2: 900, d: 0.1, g: 0.2 }); tone({ f: 1000, f2: 1600, d: 0.07, type: 'square', g: 0.14 }); },
+  rush:    () => tone({ f: 700 + rnd(300), d: 0.04, type: 'square', g: 0.16 }),
+  win:     () => ['C5','E5','G5','C6','G5','C6'].forEach((n, i) => tone({ f: nf(n), d: 0.3, type: 'square', g: 0.26, at: i * 0.11, bus: AU.sg })),
+  lose:    () => ['G4','F4','D#4','C4'].forEach((n, i) => tone({ f: nf(n), d: 0.4, type: 'triangle', g: 0.26, at: i * 0.17 })),
+  gacha:   () => { [0,1,2,3,4,5].forEach(i => tone({ f: 400 * Math.pow(1.18, i), d: 0.1, type: 'square', g: 0.18, at: i * 0.05 })); noise({ f: 6000, d: 0.3, g: 0.12, at: 0.3 }); },
+  gift:    () => ['E5','G5','B5','E6'].forEach((n, i) => tone({ f: nf(n), d: 0.28, type: 'triangle', g: 0.24, at: i * 0.08 })),
+  levelup: () => ['C5','D5','E5','G5','C6'].forEach((n, i) => tone({ f: nf(n), d: 0.24, type: 'square', g: 0.22, at: i * 0.07 })),
+  rainbow: () => { for (let i = 0; i < 10; i++) tone({ f: 500 * Math.pow(1.14, i), d: 0.18, type: 'triangle', g: 0.16, at: i * 0.035 }); noise({ f: 7000, f2: 2000, d: 0.4, g: 0.14 }); }
+};
+// てきの こうげきおん (キャラの ギミックごと)
+const ATK_SFX = {
+  tent:   () => tone({ f: 180, f2: 90, d: 0.22, type: 'sine', g: 0.26 }),                 // ぬめっと
+  jelly:  () => tone({ f: 900, f2: 1250, d: 0.25, type: 'sine', g: 0.2 }),                // ふわふわ
+  spike:  () => noise({ f: 4200, f2: 1200, d: 0.12, g: 0.24, q: 2.5 }),                   // しゅっ
+  pinch:  () => { tone({ f: 1500, d: 0.04, type: 'square', g: 0.2 }); tone({ f: 1200, d: 0.05, type: 'square', g: 0.2, at: 0.07 }); }, // カチカチ
+  charge: () => noise({ f: 300, f2: 2200, d: 0.3, g: 0.26, q: 0.8 }),                     // ごうっ
+  spin:   () => { for (let i = 0; i < 5; i++) tone({ f: 300 + i * 130, d: 0.1, type: 'sawtooth', g: 0.15, at: i * 0.05 }); },
+  zigzag: () => { tone({ f: 1600, f2: 900, d: 0.07, type: 'square', g: 0.18 }); tone({ f: 1400, f2: 2000, d: 0.07, type: 'square', g: 0.16, at: 0.08 }); }, // キィキィ
+  split:  () => { noise({ f: 2600, d: 0.06, g: 0.16 }); noise({ f: 2000, d: 0.06, g: 0.16, at: 0.09 }); },
+  bounce: () => tone({ f: 260, f2: 760, d: 0.18, type: 'sine', g: 0.26 }),                // ぼよん
+  burrow: () => { tone({ f: 110, f2: 60, d: 0.2, type: 'sine', g: 0.3 }); noise({ f: 500, d: 0.16, g: 0.16, ft: 'lowpass' }); }, // ずぼっ
+  grow:   () => tone({ f: 70, f2: 190, d: 0.5, type: 'sawtooth', g: 0.22 }),              // ゴゴゴ
+  rain:   () => noise({ f: 5200, d: 0.05, g: 0.14, q: 3 }),                                // ぱらっ
+  curve:  () => tone({ f: 480, f2: 320, d: 0.16, type: 'square', g: 0.2 }),                // ブヒッ
+  orbit:  () => { for (let i = 0; i < 4; i++) tone({ f: 420 + Math.sin(i) * 200, d: 0.12, type: 'triangle', g: 0.16, at: i * 0.06 }); },
+  hop:    () => { tone({ f: 1500, d: 0.05, type: 'square', g: 0.16 }); tone({ f: 1900, d: 0.05, type: 'square', g: 0.14, at: 0.07 }); }, // ピヨ
+  roll:   () => noise({ f: 900, f2: 1600, d: 0.28, g: 0.16, ft: 'lowpass' }),              // ころころ
+  feint:  () => tone({ f: 150, f2: 105, d: 0.3, type: 'sawtooth', g: 0.26 }),              // モ〜
+  gallop: () => { tone({ f: 260, f2: 150, d: 0.06, type: 'sine', g: 0.3 }); noise({ f: 1400, d: 0.05, g: 0.14, at: 0.02 }); } // パカッ
+};
+function sfx(k) { try { if (SFX[k]) SFX[k](); } catch (e) {} }
+function atkSfx(gim) { try { if (ATK_SFX[gim]) ATK_SFX[gim](); } catch (e) {} }
+// さいしょの タップで おとを おこす
+['pointerdown', 'touchstart', 'click'].forEach(ev =>
+  document.addEventListener(ev, function once() {
+    auStart();
+    if (AU.songId && !AU.timer) { const id = AU.songId; AU.songId = null; playSong(id); }
+    ['pointerdown', 'touchstart', 'click'].forEach(e2 => document.removeEventListener(e2, once));
+  }, { once: false }));
+
+
 const cv = document.getElementById('bt'), cx = cv.getContext('2d');
 
 // ---- キャンバスを あいたスペースに ぴったり合わせる (縦横比 192:320 維持) ----
@@ -340,6 +554,7 @@ let token = null, userName = '';
 let pollBusy = false, failCount = 0;
 
 function kickToLogin(msg) {
+  stopSong();
   token = null;
   mpLeave(true);
   leavePersonal();
@@ -690,7 +905,7 @@ function gainExp(n) {
   S.exp += n;
   let up = false;
   while (S.exp >= needExp()) { S.exp -= needExp(); S.lv++; S.maxhp += 2; up = true; }
-  if (up) { S.hp = maxHP(); say(dlg.textContent + '\n* LV ' + S.lv + ' に あがった! さいだいHP+2!'); }
+  if (up) { S.hp = maxHP(); sfx('levelup'); say(dlg.textContent + '\n* LV ' + S.lv + ' に あがった! さいだいHP+2!'); }
 }
 
 function initGame(saveStr) {
@@ -739,6 +954,7 @@ function initGame(saveStr) {
   joinPersonal();
   claimGifts();
   hud();
+  playSong(songFor('menu'));
   say('* おかえり ' + userName + '。\n* WORLD ' + S.world + '「' + worldName(S.world) + '」\n  WAVE ' + S.wave + ' から さいかいだ。');
 }
 
@@ -782,6 +998,19 @@ function renderScreen() {
   else if (screenKind === 'admin') renderAdmin();
 }
 document.getElementById('screenBack').addEventListener('click', closeScreen);
+// おと ON/OFF
+function refreshSoundBtn() {
+  const b = document.getElementById('soundBtn');
+  b.textContent = AU.on ? '🔊 おと: ON' : '🔇 おと: OFF';
+  b.style.color = AU.on ? '#97e4a0' : '#92b4c4';
+  b.style.borderColor = AU.on ? '#97e4a0' : '#556';
+}
+document.getElementById('soundBtn').addEventListener('click', () => {
+  auToggle(); refreshSoundBtn();
+  if (AU.on) playSong(mode === 'battle' && battle ? songFor(battle.boss ? 'boss' : 'battle') : songFor('menu'));
+  else stopSong();
+});
+refreshSoundBtn();
 drawer.querySelectorAll('[data-scr]').forEach(b =>
   b.addEventListener('click', () => openScreen(b.dataset.scr)));
 
@@ -1099,6 +1328,7 @@ function renderCardDetail(it) {
 // ---- ガチャ (ぶき or コア。かぶりも そのまま もちものへ) ----
 // ガチャ けっか ポップアップ
 function showGachaFx(rarName, name, desc, col) {
+  sfx('gacha');
   const box = document.getElementById('gachaFxBox');
   box.style.setProperty('--fxcol', col);
   document.getElementById('gachaFxRar').textContent = '✨ ' + rarName + ' ✨';
@@ -1676,6 +1906,7 @@ function showGift(label, saleHtml) {
   m.className = 'giftMsg';
   m.innerHTML = saleHtml || ('📨 システムから <b>' + label + '</b> が とどきました！');
   el.appendChild(m);
+  sfx('gift');
   setTimeout(() => { m.style.transition = 'opacity .5s'; m.style.opacity = '0'; setTimeout(() => m.remove(), 500); }, 4500);
 }
 function applyGift(g) {
@@ -2349,6 +2580,7 @@ function startBattle() {
   closeScreen(); closeDrawer();
   showPanel('hand');
   const e = makeEnemy();
+  playSong(songFor(e.boss ? 'boss' : 'battle'));
   battle = Object.assign(e, battleFields());
   renderHand();
   say('* WAVE ' + S.wave + ' — ' + APPEAR_MSG[e.key]);
@@ -2363,6 +2595,7 @@ function startBattleMp(e, w, v) {
   mode = 'battle';
   closeScreen(); closeDrawer();
   showPanel('hand');
+  playSong(songFor(e.boss ? 'boss' : 'battle'));
   battle = Object.assign({}, e, battleFields());
   renderHand(); renderItems();
   if (MP) { MP.lastHp = -1; mpSyncHp(); } // バトル開始時に HPを同期しなおす
@@ -2372,6 +2605,7 @@ function startBattleMp(e, w, v) {
 function winBattle() {
   const b = battle;
   if (!b) return;
+  sfx('win');
   say('* しょうり! ⛃' + b.coin + ' と EXP' + b.exp + ' を てにいれた。');
   S.coins += b.coin;
   gainExp(b.exp);
@@ -2405,6 +2639,7 @@ function winBattle() {
   hud();
   mode = 'inter'; battle = null;
   showPanel('none');
+  playSong(songFor('menu'));
   if (MP && MP.p) {
     MP.ready = false; MP.p.ready = false; MP.p.down = false; MP.p.defend = false;
     say(dlg.textContent + '\n* ふたりの しょうりだ!');
@@ -2414,6 +2649,7 @@ function winBattle() {
 }
 
 function gameOver() {
+  sfx('lose');
   S.coins += 20;
   say('* たおれてしまった…\n* でも ほしのちからで ふっかつした! (すすみは そのまま)\n* なぐさめに ⛃20 ひろった。');
   S.hp = maxHP();
@@ -2421,6 +2657,7 @@ function gameOver() {
   hud();
   mode = 'inter'; battle = null;
   showPanel('none');
+  playSong(songFor('menu'));
   checkInvite();
 }
 
@@ -2462,6 +2699,7 @@ function useCard(i) {
   if (!it) return;
   const c = cards[it.c];
   if (b.cds[i] > 0) { say('* ' + c.name + ' は クールダウンちゅう! (あと' + b.cds[i] + 'ターン)'); return; }
+  sfx('card');
   b.card = c; b.cardIdx = i;
   b.cds[i] = cdOf(i) + 1;
   if (hasCd3Heal(i)) {
@@ -2516,7 +2754,7 @@ cv.addEventListener('click', e => {
   }
   if (mode !== 'battle' || !battle) return;
   const b = battle;
-  if (b.state === 'vert') { b.lockX = b.vx; b.state = 'horiz'; say('* つぎは よこバー!'); return; }
+  if (b.state === 'vert') { b.lockX = b.vx; b.state = 'horiz'; sfx('lock'); say('* つぎは よこバー!'); return; }
   if (b.state === 'horiz') {
     b.lockY = b.hy;
     if (b.card.type === 'heal') resolveHeal();
@@ -2536,6 +2774,7 @@ cv.addEventListener('click', e => {
       b.rushTaps++;
       const inc = pow * 0.10 * (1 + b.rushTaps * 0.04);
       b.rushDmg = Math.min(cap, b.rushDmg + inc);
+      sfx('rush');
       b.shake = 4; b.shakeAmp = 2;
       b.rushTapFx.push({ x: mx, y: my, t: 12 });
     }
@@ -2553,6 +2792,7 @@ cv.addEventListener('click', e => {
           return;
         }
         a.done = true; a.broken = true; a.popT = 12;
+        sfx('break');
         return;
       }
     }
@@ -2618,6 +2858,7 @@ function resolveHitG(g) {
   const dmg = Math.max(1, Math.round(powOf(b.cardIdx) * g.mult));
   b.ehp = Math.max(0, b.ehp - dmg);
   fxHit(b, g, '' + dmg);
+  sfx(b.card && b.card.el === 'rainbow' ? 'rainbow' : (g.just ? 'just' : g.mult >= 1 ? 'hit' : g.mult >= 0.6 ? 'graze' : 'miss'));
   grassHealOnAttack();
   mpSend('dmg', { dmg: dmg, crit: g.just, card: b.card.name, ehp: b.ehp });
   say('* ' + g.label + ' ' + dmg + ' ダメージ!');
@@ -2635,6 +2876,7 @@ function resolveHeal() {
   const g = gradeOf(b);
   const heal = Math.max(1, Math.round(powOf(b.cardIdx) * g.mult));
   S.hp = Math.min(maxHP(), S.hp + heal);
+  sfx('heal');
   hud();
   mpSend('heal', { amt: heal, hp: S.hp, maxhp: maxHP() });
   b.hitPt = [b.lockX, b.lockY];
@@ -2655,6 +2897,7 @@ function resolveGuard() {
   b.state = 'result';
   const g = gradeOf(b);
   b.guard = g.just ? 0.8 : g.mult >= 1 ? 0.55 : g.mult >= 0.6 ? 0.3 : 0.15;
+  sfx('guard');
   b.hitPt = [b.lockX, b.lockY];
   b.hitEl = null;
   b.hitCol = '#7fd4ff'; b.hitBig = g.just;
@@ -2957,6 +3200,7 @@ function startDefend() {
 function strike(b, a) {
   a.done = true; a.strikeT = 10;
   if (b.over) return;
+  atkSfx(a.gim);
   const eff = armorEff();
   const roll = b.atkMin + rnd(b.atkMax - b.atkMin + 1);
   let ed = Math.max(1, Math.round(roll * (a.dmgF || 1) * (1 - (b.guard || 0)) * (1 - (eff.dmgRed || 0))));
@@ -2972,6 +3216,7 @@ function strike(b, a) {
     return;
   }
   S.hp = Math.max(0, S.hp - ed);
+  sfx('hurt');
   b.hurtT = 12; b.heartHitT = 14;
   hud();
   mpSend('hurt', { dmg: ed, hp: S.hp, arm: equippedArmor() });
