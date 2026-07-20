@@ -116,6 +116,19 @@
   #invText { font-size: 13px; line-height: 1.8; white-space: pre-line; margin-bottom: 12px; }
   #invBox .grow2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
+  /* ===== えらぶボタン (システム管理などで つかう) ===== */
+  .pickgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .pickbtn { position: relative; font-family: inherit; font-size: 12px; line-height: 1.4; padding: 12px 6px 12px 26px;
+             text-align: left; background: linear-gradient(#16233c, #0d1628); color: #c7dbe8;
+             border: 2px solid #3a4a63; border-radius: 8px; transition: transform .08s, box-shadow .15s; }
+  .pickbtn .ck { position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+                 width: 14px; height: 14px; line-height: 14px; text-align: center; font-size: 11px; font-weight: bold;
+                 border: 2px solid #566; border-radius: 4px; color: #0d1628; }
+  .pickbtn.pickon { font-weight: bold; box-shadow: 0 0 12px rgba(255,255,255,.25); transform: translateY(-1px); }
+  .pickbtn.pickon .ck { background: #fff; border-color: #fff; color: #0d1628; }
+  .pickbtn:active { transform: scale(.97); }
+  .grow button.pickon { border-color: #ffe97a; color: #ffe97a; background: rgba(255,233,122,.18); font-weight: bold; }
+
   /* ===== システムからの プレゼント通知 (上から) ===== */
   #giftBanner { position: fixed; top: 0; left: 0; right: 0; z-index: 80; display: flex; flex-direction: column; align-items: center;
                 gap: 6px; padding: 8px; pointer-events: none; }
@@ -503,11 +516,11 @@ const FOES = {
   golem:  { name: 'いわゴーレム', hpB: 60, hpG: 16, atkF: 1.05, gim: 'grow', hue: 22 },
   biggolem: { name: '大ゴーレム', hpB: 140, hpG: 22, atkF: 1.0, gim: 'rain', hue: 22 },
   // WORLD3: みどりの へいげん (それぞれ せんよう攻撃)
-  chick:  { name: 'ヒヨコ',     hpB: 26, hpG: 10, atkF: 0.8, gim: 'rain',   hue: 50 },
+  chick:  { name: 'ヒヨコ',     hpB: 26, hpG: 10, atkF: 0.8, gim: 'hop',    hue: 50 },
   pig:    { name: 'ブタ',       hpB: 44, hpG: 13, atkF: 1.0, gim: 'curve',  hue: 340 },
-  sheep:  { name: 'ヒツジ',     hpB: 38, hpG: 12, atkF: 0.85, gim: 'bounce', hue: 200 },
-  cow:    { name: 'ウシ',       hpB: 52, hpG: 15, atkF: 1.05, gim: 'grow',  hue: 30 },
-  horse:  { name: 'ウマ',       hpB: 46, hpG: 14, atkF: 1.1, gim: 'zigzag', hue: 25 },
+  sheep:  { name: 'ヒツジ',     hpB: 38, hpG: 12, atkF: 0.85, gim: 'roll',  hue: 200 },
+  cow:    { name: 'ウシ',       hpB: 52, hpG: 15, atkF: 1.05, gim: 'feint', hue: 30 },
+  horse:  { name: 'ウマ',       hpB: 46, hpG: 14, atkF: 1.1, gim: 'gallop', hue: 25 },
   bigcow: { name: '大ウシ',     hpB: 150, hpG: 23, atkF: 1.0, gim: 'orbit', hue: 30 }
 };
 const WORLDS = [
@@ -544,8 +557,8 @@ const ATK_MSG = {
   bat: 'コウモリが ジグザグに とびまわる!', spider: 'クモの糸が 2つに わかれた!',
   slime: 'スライムが ぼよんぼよん はねる!', mole: 'モグラが つちに もぐった!',
   golem: 'ゴーレムが ちからを ためている!', biggolem: '大ゴーレムが いわを ふらせる!',
-  chick: 'ヒヨコの みだれ つつき!', pig: 'ブタが まわりこんでくる!', sheep: 'ヒツジが ころころ はねてくる!',
-  cow: 'ウシが つのを かまえて ためている!', horse: 'ウマが あばれ まわる!', bigcow: '大ウシが ぐるっと まわって とっしん!'
+  chick: 'ヒヨコが ぴょんぴょん とんでくる!', pig: 'ブタが まわりこんでくる!', sheep: 'ヒツジが ふちを ころがってくる!',
+  cow: 'ウシが フェイントを かけてきた!', horse: 'ウマの れんぞく けり!', bigcow: '大ウシが ぐるっと まわって とっしん!'
 };
 // 大ボスの会話 (HPが減ると しゃべる)
 const BOSS_TALK = {
@@ -1307,7 +1320,7 @@ async function renderRanking() {
 }
 
 // ---- システム管理画面 (システムアカウントのみ) ----
-let adminGiftKind = 'coins';
+
 function renderAdmin() {
   if (screenKind !== 'admin') return;
   screenBody.innerHTML = '';
@@ -1315,64 +1328,97 @@ function renderAdmin() {
     screenBody.innerHTML = '<div class="dcard"><div class="sub">この きのうは システムアカウント せんようです。</div></div>';
     return;
   }
+  // ---- あいての なまえ ----
   const d = document.createElement('div');
   d.className = 'dcard'; d.style.borderColor = '#ff9a3c';
   d.innerHTML = '<span class="nm" style="color:#ff9a3c">🛠 プレゼントを おくる</span>' +
-    '<div class="sub">あいての なまえと、おくるものを えらんで そうしん。\nとどいた あいてには 上から おしらせが でます。</div>';
+    '<div class="sub">なまえを いれて、あげたい ものを タップ。いくつでも えらべます。</div>';
   const nameIn = document.createElement('input');
   nameIn.maxLength = 12; nameIn.placeholder = 'あいての なまえ';
+  nameIn.value = adminGiftName;
+  nameIn.addEventListener('input', () => { adminGiftName = nameIn.value; });
   d.appendChild(nameIn);
-  // なにを おくる? (お金 / 装備)
-  const pick = document.createElement('div');
-  pick.className = 'sortrow'; pick.style.marginTop = '8px';
-  const kinds = [['coins', '⛃ おかね'], ['armor', '🛡 装備']];
-  const kbtns = {};
-  kinds.forEach(pr => {
+  screenBody.appendChild(d);
+
+  // ---- おかね ----
+  const dc = document.createElement('div');
+  dc.className = 'dcard'; dc.style.borderColor = '#ffe97a';
+  dc.innerHTML = '<span class="nm" style="color:#ffe97a">⛃ おかね</span>';
+  const amtRow = document.createElement('div');
+  amtRow.className = 'grow';
+  [0, 500, 1000, 5000, 20000, 100000].forEach(v => {
     const b = document.createElement('button');
-    b.textContent = pr[1];
-    if (adminGiftKind === pr[0]) b.classList.add('sel');
-    b.addEventListener('click', () => { adminGiftKind = pr[0]; renderAdmin(); });
-    kbtns[pr[0]] = b; pick.appendChild(b);
+    b.textContent = v === 0 ? 'なし' : '⛃' + v;
+    if (adminGiftCoins === v) b.classList.add('pickon');
+    b.addEventListener('click', () => { adminGiftCoins = v; renderAdmin(); });
+    amtRow.appendChild(b);
   });
-  d.appendChild(pick);
-  // お金の額 or 装備の種類
-  let amountIn, armorSel;
-  if (adminGiftKind === 'coins') {
-    amountIn = document.createElement('input');
-    amountIn.type = 'number'; amountIn.value = '1000'; amountIn.placeholder = 'いくら ⛃';
-    d.appendChild(amountIn);
-  } else {
-    armorSel = document.createElement('div');
-    armorSel.className = 'grow'; armorSel.style.marginTop = '6px';
-    Object.keys(ARMORS).forEach(k => {
-      const bt = document.createElement('button');
-      bt.textContent = ARMORS[k].name.replace('のよろい', '').replace('アーマー', '🦀');
-      bt.dataset.k = k;
-      if (adminGiftItem === k) { bt.style.borderColor = ARMORS[k].col === 'rainbow' ? '#ff9a3c' : ARMORS[k].col; bt.style.color = '#fff'; }
-      bt.addEventListener('click', () => { adminGiftItem = k; renderAdmin(); });
-      armorSel.appendChild(bt);
+  dc.appendChild(amtRow);
+  screenBody.appendChild(dc);
+
+  // ---- 装備 (ふくすう えらべる) ----
+  const da = document.createElement('div');
+  da.className = 'dcard'; da.style.borderColor = '#7fd4ff';
+  da.innerHTML = '<span class="nm" style="color:#7fd4ff">🛡 そうび (タップで えらぶ / もういちどで はずす)</span>';
+  const ag = document.createElement('div');
+  ag.className = 'pickgrid';
+  Object.keys(ARMORS).forEach(k => {
+    const A = ARMORS[k];
+    const on = adminGiftSel.has(k);
+    const bt = document.createElement('button');
+    bt.className = 'pickbtn' + (on ? ' pickon' : '');
+    const col = A.col === 'rainbow' ? '#ff9a3c' : A.col;
+    if (on) { bt.style.borderColor = col; bt.style.color = '#fff'; bt.style.background = col + '33'; }
+    bt.innerHTML = '<span class="ck">' + (on ? '✔' : '') + '</span>' +
+      '<span style="color:' + (on ? '#fff' : col) + '">' + A.name + '</span>';
+    bt.addEventListener('click', () => {
+      if (adminGiftSel.has(k)) adminGiftSel.delete(k); else adminGiftSel.add(k);
+      renderAdmin();
     });
-    d.appendChild(armorSel);
-  }
+    ag.appendChild(bt);
+  });
+  da.appendChild(ag);
+  screenBody.appendChild(da);
+
+  // ---- かくにん + そうしん ----
+  const ds = document.createElement('div');
+  ds.className = 'dcard'; ds.style.borderColor = '#97e4a0';
+  const picked = [...adminGiftSel].map(k => ARMORS[k].name);
+  const nm = adminGiftName.trim();
+  ds.innerHTML = '<span class="nm" style="color:#97e4a0">おくる ないよう</span>' +
+    '<div>あいて: <b style="color:#ffe97a">' + (nm || '(なまえを いれてね)') + '</b></div>' +
+    '<div>おかね: <b>' + (adminGiftCoins ? '⛃' + adminGiftCoins : 'なし') + '</b></div>' +
+    '<div>そうび: <b>' + (picked.length ? picked.join(' / ') : 'なし') + '</b></div>';
   const send = document.createElement('button');
   send.className = 'wide'; send.style.borderColor = '#ff9a3c'; send.style.color = '#ff9a3c';
   send.textContent = '▶ おくる!';
   send.addEventListener('click', async () => {
-    const nm = nameIn.value.trim();
-    if (!nm) { say('* なまえを いれてね'); return; }
-    const kind = adminGiftKind;
-    const amount = kind === 'coins' ? Math.max(0, parseInt(amountIn.value, 10) || 0) : 0;
-    const item = kind === 'armor' ? adminGiftItem : null;
-    if (kind === 'armor' && !item) { say('* おくる 装備を えらんでね'); return; }
-    send.disabled = true;
+    const who = adminGiftName.trim();
+    if (!who) { say('* なまえを いれてね'); return; }
+    if (!adminGiftCoins && !adminGiftSel.size) { say('* おくる ものを えらんでね'); return; }
+    send.disabled = true; send.textContent = 'おくってる…';
+    const done = [], fail = [];
     try {
-      const r = await api('dm_admin_gift', { p_token: token, p_name: nm, p_kind: kind, p_amount: amount, p_item: item });
-      say('* ' + (r.ok ? nm + ' に おくった!' : (r.msg || 'しっぱい')));
-    } catch (e) { say('* つうしんエラー…'); }
-    send.disabled = false;
+      if (adminGiftCoins > 0) {
+        const r = await api('dm_admin_gift', { p_token: token, p_name: who, p_kind: 'coins', p_amount: adminGiftCoins, p_item: null });
+        (r.ok ? done : fail).push(r.ok ? '⛃' + adminGiftCoins : (r.msg || 'おかね'));
+      }
+      for (const k of [...adminGiftSel]) {
+        const r = await api('dm_admin_gift', { p_token: token, p_name: who, p_kind: 'armor', p_amount: 0, p_item: k });
+        (r.ok ? done : fail).push(r.ok ? ARMORS[k].name : (r.msg || k));
+      }
+      if (fail.length) say('* おくれなかった: ' + fail.join(' / '));
+      else {
+        say('* ' + who + ' に おくった!\n* ' + done.join(' / '));
+        adminGiftSel.clear(); adminGiftCoins = 0;
+      }
+    } catch (e) {
+      say('* つうしんエラー…\n* Supabaseで schema.sql を ぜんぶ 実行したか かくにん!');
+    }
+    renderAdmin();
   });
-  d.appendChild(send);
-  screenBody.appendChild(d);
+  ds.appendChild(send);
+  screenBody.appendChild(ds);
 }
 
 // ---- システムからの プレゼント (受けとり) ----
@@ -1417,7 +1463,9 @@ async function claimGifts() {
   finally { giftBusy = false; }
 }
 
-let adminGiftItem = 'rainbow';
+let adminGiftName = '';
+let adminGiftCoins = 0;
+const adminGiftSel = new Set();
 
 // ================================================================
 // ==== きょうりょくバトル (Supabase Realtime) ====
@@ -2401,6 +2449,16 @@ function edgePt(side, pos) {
   return [BX + pos * BW, BY + BH - 2];
 }
 const SIDES = ['top', 'bottom', 'left', 'right'];
+// ふちを 1しゅうする みち (q = 0〜1)
+function borderPt(q) {
+  q = ((q % 1) + 1) % 1;
+  const m = 8, x0 = BX + m, y0 = BY + m, w = BW - m * 2, h = BH - m * 2;
+  const per = (w + h) * 2, d = q * per;
+  if (d < w) return [x0 + d, y0];
+  if (d < w + h) return [x0 + w, y0 + (d - w)];
+  if (d < w * 2 + h) return [x0 + w - (d - w - h), y0 + h];
+  return [x0, y0 + h - (d - w * 2 - h)];
+}
 
 function startDefend() {
   const b = battle;
@@ -2521,6 +2579,31 @@ function startDefend() {
     for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'curve', side: rnd(2) ? 'left' : 'right', pos: 0.2 + Math.random() * 0.6,
       bend: (rnd(2) ? 1 : -1) * (28 + rnd(16)), t: -((i0 + i) * 46 + rnd(20)), dur: dur, dmgF: 0.95 }));
   };
+  // ヒヨコ: ぴょんぴょん とんで ちかづく
+  const addHop = (n, i0) => {
+    const dur = Math.max(84, (boss ? 104 : 116) - L);
+    for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'hop', side: SIDES[rnd(4)], pos: 0.18 + Math.random() * 0.64,
+      hops: 4, t: -((i0 + i) * 46 + rnd(20)), dur: dur, dmgF: 0.8 }));
+  };
+  // ヒツジ: ふちを ころがって から 中へ
+  const addRoll = (n, i0) => {
+    const dur = Math.max(100, (boss ? 124 : 136) - L);
+    for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'roll', startQ: Math.random(), turns: 0.55 + Math.random() * 0.3,
+      spin: 0, t: -((i0 + i) * 52 + rnd(22)), dur: dur, dmgF: 0.9 }));
+  };
+  // ウシ: フェイント (すすんで→さがって→とっしん)
+  const addFeint = (n, i0) => {
+    const dur = Math.max(80, (boss ? 100 : 112) - Math.floor(L * 0.7));
+    for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'feint', side: SIDES[rnd(4)], hitR: 20,
+      t: -((i0 + i) * 86 + rnd(22)), dur: dur, dash: 9, dmgF: 1.1 }));
+  };
+  // ウマ: おなじ ほうこうから れんぞく けり
+  const addGallop = (n, i0) => {
+    const side = SIDES[rnd(4)];
+    const tele = Math.max(26, (boss ? 32 : 38) - Math.floor(L / 3));
+    for (let i = 0; i < n; i++) b.atks.push(mk({ gim: 'gallop', side: side, pos: 0.22 + Math.random() * 0.56,
+      t: -((i0 + i) * 24 + rnd(8)), tele: tele, fly: 8, dmgF: 0.75 }));
+  };
   // 大ウシ: ぐるっと まわってから とっこむ
   const addOrbit = (n, i0) => {
     const dur = Math.max(96, (boss ? 120 : 130) - L);
@@ -2580,6 +2663,22 @@ function startDefend() {
     case 'orbit':
       addOrbit(Math.min(6, (boss ? 5 : 4) + Math.floor(L / 8)), 0);
       msg = '* ' + (ATK_MSG[b.key] || 'ぐるぐる まわってくる!') + '\n* まわってから とっこむ 丸を タップ!';
+      break;
+    case 'hop':
+      addHop(Math.min(6, (boss ? 4 : 3) + Math.floor(L / 9)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'ぴょんぴょん くる!') + '\n* ぴょんと はねる 丸を タップ!';
+      break;
+    case 'roll':
+      addRoll(Math.min(5, (boss ? 3 : 2) + Math.floor(L / 10)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'ころがってくる!') + '\n* ふちを まわってる うちに タップ!';
+      break;
+    case 'feint':
+      addFeint(Math.min(3, (boss ? 3 : 2) + Math.floor(L / 14)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'フェイント!') + '\n* さがっても また くるぞ! 丸を タップ!';
+      break;
+    case 'gallop':
+      addGallop(Math.min(9, (boss ? 7 : 5) + Math.floor(L / 6)), 0);
+      msg = '* ' + (ATK_MSG[b.key] || 'れんぞく こうげき!') + '\n* おなじ ほうこうから くる! つづけて タップ!';
       break;
     case 'spin8': // 大ダコ: 「通常ターン」と「回転ターン」を ランダムで きりかえ
       if (Math.random() < 0.5) {
@@ -2753,6 +2852,66 @@ function updateDefend(b) {
       a.cx = HX + Math.cos(a.ang) * a.rad; a.cy = HY + Math.sin(a.ang) * a.rad;
       a.active = true;
       if (p >= 1) strike(b, a);
+    } else if (a.gim === 'hop') {
+      // ぴょんぴょん だんだん ちかづく
+      const seg = a.dur / a.hops;
+      const idx = Math.min(a.hops - 1, Math.floor(a.t / seg));
+      const lp = (a.t - idx * seg) / seg;
+      const q = Math.min(1, lp / 0.45);
+      const frac = (idx + q) / a.hops;
+      const [ex, ey] = edgePt(a.side, a.pos);
+      a.cx = ex + (HX - ex) * frac;
+      a.cy = ey + (HY - ey) * frac - Math.sin(q * Math.PI) * 9; // ジャンプの やま
+      a.hopQ = q;
+      a.active = true;
+      if (a.t >= a.dur) strike(b, a);
+    } else if (a.gim === 'roll') {
+      // ふちを ころがって から 中心へ
+      const p = Math.min(1, a.t / a.dur);
+      a.spin = a.t * 0.22;
+      if (p < 0.62) {
+        const q = (a.startQ + (p / 0.62) * a.turns) % 1;
+        const pt = borderPt(q);
+        a.cx = pt[0]; a.cy = pt[1];
+      } else {
+        const pt = borderPt((a.startQ + a.turns) % 1);
+        const q2 = (p - 0.62) / 0.38;
+        a.cx = pt[0] + (HX - pt[0]) * q2;
+        a.cy = pt[1] + (HY - pt[1]) * q2;
+      }
+      a.active = true;
+      if (p >= 1) strike(b, a);
+    } else if (a.gim === 'feint') {
+      const [ex, ey] = edgePt(a.side, 0.5);
+      if (a.t <= a.dur) {
+        const p = a.t / a.dur;
+        let f;
+        if (p < 0.45) f = (p / 0.45) * 0.45;            // すすむ
+        else if (p < 0.7) f = 0.45 - ((p - 0.45) / 0.25) * 0.27; // さがる (フェイント)
+        else f = 0.18 + ((p - 0.7) / 0.3) * 0.42;       // また すすむ
+        a.feintBack = (p >= 0.45 && p < 0.7);
+        a.cx = ex + (HX - ex) * f; a.cy = ey + (HY - ey) * f;
+        a.active = true;
+      } else {
+        a.active = false;
+        const q = (a.t - a.dur) / a.dash;
+        a.cx = ex + (HX - ex) * Math.min(1, q);
+        a.cy = ey + (HY - ey) * Math.min(1, q);
+        if (q >= 1) strike(b, a);
+      }
+    } else if (a.gim === 'gallop') {
+      const [ex, ey] = edgePt(a.side, a.pos);
+      if (a.t <= a.tele) {
+        a.cx = ex + (HX - ex) * 0.18;
+        a.cy = ey + (HY - ey) * 0.18;
+        a.active = true;
+      } else {
+        a.active = false;
+        const q = (a.t - a.tele) / a.fly;
+        a.cx = ex + (HX - ex) * Math.min(1, 0.18 + q * 0.82);
+        a.cy = ey + (HY - ey) * Math.min(1, 0.18 + q * 0.82);
+        if (q >= 1) strike(b, a);
+      }
     }
   }
   if (allDone && !b.over) {
@@ -2925,6 +3084,99 @@ function drawSeaBg() {
     cx.strokeStyle = 'rgba(127,212,255,.3)';
     cx.beginPath(); cx.arc(bx3 + Math.sin(anim / 20 + i) * 3, by3, 1.5 + i % 3, 0, 7); cx.stroke();
   }
+}
+
+// ---- どうくつ ----
+function drawCaveBg() {
+  const g = cx.createLinearGradient(0, 0, 0, 320);
+  g.addColorStop(0, '#1d1710');
+  g.addColorStop(1, '#080506');
+  cx.fillStyle = g; cx.fillRect(0, 0, 192, 320);
+  // おくの いわかべ
+  cx.fillStyle = 'rgba(60,44,32,.55)';
+  for (let i = 0; i < 6; i++) {
+    const rx = (i * 41 + 9) % 192, rw = 26 + (i % 3) * 12;
+    cx.beginPath(); cx.arc(rx, 96 + (i % 2) * 40, rw, Math.PI, 0); cx.fill();
+  }
+  // つらら (上から)
+  cx.fillStyle = '#3a2c20';
+  for (let i = 0; i < 9; i++) {
+    const sx = i * 22 + 6, sh = 16 + ((i * 37) % 26);
+    cx.beginPath(); cx.moveTo(sx - 6, 0); cx.lineTo(sx + 6, 0); cx.lineTo(sx, sh); cx.fill();
+  }
+  // 下から せりあがる いわ
+  cx.fillStyle = '#2a1f16';
+  for (let i = 0; i < 6; i++) {
+    const sx = i * 34 + 14, sh = 14 + ((i * 53) % 22);
+    cx.beginPath(); cx.moveTo(sx - 8, 320); cx.lineTo(sx + 8, 320); cx.lineTo(sx, 320 - sh); cx.fill();
+  }
+  // ひかる クリスタル
+  for (let i = 0; i < 5; i++) {
+    const cxp = [18, 62, 108, 150, 178][i], cyp = [58, 34, 62, 40, 66][i];
+    const tw = 0.35 + Math.sin(anim / 18 + i * 1.7) * 0.3;
+    cx.fillStyle = 'rgba(127,212,255,' + tw + ')';
+    cx.beginPath();
+    cx.moveTo(cxp, cyp - 7); cx.lineTo(cxp + 4, cyp); cx.lineTo(cxp, cyp + 7); cx.lineTo(cxp - 4, cyp); cx.fill();
+  }
+  // ちいさい こうもり かげ
+  for (let i = 0; i < 3; i++) {
+    const bx = (anim * (0.5 + i * 0.2) + i * 70) % 220 - 14;
+    const by = 24 + i * 16 + Math.sin(anim / 12 + i) * 5;
+    cx.fillStyle = 'rgba(0,0,0,.45)';
+    const f = Math.sin(anim / 4 + i) * 3;
+    cx.beginPath(); cx.moveTo(bx, by); cx.lineTo(bx - 6, by - f); cx.lineTo(bx - 3, by + 2); cx.fill();
+    cx.beginPath(); cx.moveTo(bx, by); cx.lineTo(bx + 6, by - f); cx.lineTo(bx + 3, by + 2); cx.fill();
+  }
+}
+
+// ---- へいげん ----
+function drawPlainsBg() {
+  const g = cx.createLinearGradient(0, 0, 0, 320);
+  g.addColorStop(0, '#5fb6e8');
+  g.addColorStop(0.55, '#a8dcf0');
+  g.addColorStop(0.56, '#5aa83c');
+  g.addColorStop(1, '#26602a');
+  cx.fillStyle = g; cx.fillRect(0, 0, 192, 320);
+  // おひさま
+  cx.fillStyle = 'rgba(255,240,150,.85)';
+  cx.beginPath(); cx.arc(160, 26, 13, 0, 7); cx.fill();
+  cx.fillStyle = 'rgba(255,240,150,.25)';
+  cx.beginPath(); cx.arc(160, 26, 20 + Math.sin(anim / 25) * 2, 0, 7); cx.fill();
+  // ながれる くも
+  cx.fillStyle = 'rgba(255,255,255,.85)';
+  for (let i = 0; i < 3; i++) {
+    const cxp = ((anim * (0.18 + i * 0.07) + i * 80) % 240) - 30;
+    const cyp = 26 + i * 22;
+    cx.beginPath();
+    cx.arc(cxp, cyp, 9, 0, 7); cx.arc(cxp + 10, cyp + 2, 7, 0, 7); cx.arc(cxp - 9, cyp + 3, 6, 0, 7); cx.fill();
+  }
+  // とおくの おか
+  cx.fillStyle = '#4a9636';
+  cx.beginPath(); cx.arc(40, 190, 52, Math.PI, 0); cx.fill();
+  cx.beginPath(); cx.arc(140, 196, 46, Math.PI, 0); cx.fill();
+  // くさ (ゆれる)
+  cx.strokeStyle = 'rgba(30,86,32,.8)'; cx.lineWidth = 2;
+  for (let i = 0; i < 16; i++) {
+    const gx = (i * 13 + 5) % 192, gy = 190 + (i % 5) * 26;
+    const sw = Math.sin(anim / 14 + i) * 3;
+    cx.beginPath(); cx.moveTo(gx, gy); cx.quadraticCurveTo(gx + sw, gy - 7, gx + sw * 2, gy - 12); cx.stroke();
+  }
+  cx.lineWidth = 1;
+  // おはな
+  const fc = ['#fff', '#ffe97a', '#f7a8c4'];
+  for (let i = 0; i < 7; i++) {
+    const fx = (i * 29 + 12) % 186, fy = 210 + (i % 4) * 24;
+    cx.fillStyle = fc[i % 3];
+    cx.beginPath(); cx.arc(fx, fy, 2.2, 0, 7); cx.fill();
+  }
+}
+
+// いまの ワールドに あわせた はいけい
+function drawBg() {
+  const w = ((S.world - 1) % WORLDS.length);
+  if (w === 1) drawCaveBg();
+  else if (w === 2) drawPlainsBg();
+  else drawSeaBg();
 }
 
 function drawFoe(b) {
@@ -3399,6 +3651,63 @@ function drawAtks(b) {
       cx.fillStyle = tcol; cx.beginPath(); cx.arc(a.cx, a.cy, 6, 0, 7); cx.fill();
       cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(a.cx - 1.5, a.cy - 1.5, 2, 0, 7); cx.fill();
       drawTapCircle(a, a.rad < 24);
+    } else if (a.gim === 'hop') {
+      // ヒヨコ: たまご型 + かげ
+      const air = Math.sin((a.hopQ || 0) * Math.PI);
+      cx.fillStyle = 'rgba(0,0,0,.3)';
+      cx.beginPath(); cx.ellipse(a.cx, a.cy + 9, 5 - air * 2, 2, 0, 0, 7); cx.fill();
+      cx.fillStyle = tcol;
+      cx.beginPath(); cx.ellipse(a.cx, a.cy, 5.5, 6.5, 0, 0, 7); cx.fill();
+      cx.fillStyle = '#f0a030';
+      cx.beginPath(); cx.moveTo(a.cx - 5, a.cy); cx.lineTo(a.cx - 9, a.cy + 1.5); cx.lineTo(a.cx - 5, a.cy + 3); cx.fill();
+      cx.fillStyle = '#03050f'; cx.fillRect(a.cx - 2, a.cy - 3, 2, 2);
+      drawTapCircle(a, a.t / a.dur > 0.72);
+    } else if (a.gim === 'roll') {
+      // ヒツジ: もこもこ玉が ころがる
+      cx.fillStyle = '#f2f0ea';
+      for (let i2 = 0; i2 < 5; i2++) {
+        const a2 = i2 / 5 * Math.PI * 2 + (a.spin || 0);
+        cx.beginPath(); cx.arc(a.cx + Math.cos(a2) * 3.4, a.cy + Math.sin(a2) * 3.4, 3.4, 0, 7); cx.fill();
+      }
+      cx.fillStyle = tdark;
+      cx.beginPath(); cx.arc(a.cx + Math.cos(a.spin || 0) * 2, a.cy + Math.sin(a.spin || 0) * 2, 2.4, 0, 7); cx.fill();
+      drawTapCircle(a, a.t / a.dur > 0.62);
+    } else if (a.gim === 'feint') {
+      if (a.active) {
+        const [ex, ey] = edgePt(a.side, 0.5);
+        cx.strokeStyle = 'rgba(226,75,74,.25)'; cx.lineWidth = 1;
+        cx.beginPath(); cx.moveTo(ex, ey); cx.lineTo(HX, HY); cx.stroke();
+        // つの を かまえた あたま
+        cx.fillStyle = a.feintBack ? tdark : tcol;
+        cx.beginPath(); cx.arc(a.cx, a.cy, 8, 0, 7); cx.fill();
+        cx.strokeStyle = '#e6d9b0'; cx.lineWidth = 2;
+        cx.beginPath(); cx.moveTo(a.cx - 6, a.cy - 4); cx.lineTo(a.cx - 10, a.cy - 8); cx.stroke();
+        cx.beginPath(); cx.moveTo(a.cx + 6, a.cy - 4); cx.lineTo(a.cx + 10, a.cy - 8); cx.stroke();
+        cx.lineWidth = 1;
+        if (a.feintBack) { // フェイント中は わかるように
+          cx.fillStyle = '#7fd4ff'; cx.font = 'bold 8px monospace'; cx.textAlign = 'center';
+          cx.fillText('?', a.cx, a.cy - 12); cx.textAlign = 'left';
+        }
+        drawTapCircle(a, !a.feintBack && a.t / a.dur > 0.7, 14);
+      } else {
+        cx.fillStyle = tcol;
+        cx.beginPath(); cx.arc(a.cx, a.cy, 9, 0, 7); cx.fill();
+      }
+    } else if (a.gim === 'gallop') {
+      const [ex, ey] = edgePt(a.side, a.pos);
+      if (a.t <= a.tele) {
+        cx.strokeStyle = 'rgba(255,255,255,.2)'; cx.setLineDash([3, 4]);
+        cx.beginPath(); cx.moveTo(a.cx, a.cy); cx.lineTo(HX, HY); cx.stroke(); cx.setLineDash([]);
+        cx.fillStyle = tcol; // ひづめ
+        cx.beginPath(); cx.arc(a.cx, a.cy, 4.5, Math.PI * 0.15, Math.PI * 0.85); cx.fill();
+        drawTapCircle(a, a.t > a.tele * 0.55);
+      } else {
+        const ang = Math.atan2(HY - ey, HX - ex);
+        cx.fillStyle = '#e6d9b0';
+        cx.save(); cx.translate(a.cx, a.cy); cx.rotate(ang);
+        cx.beginPath(); cx.moveTo(7, 0); cx.lineTo(-4, -4); cx.lineTo(-4, 4); cx.fill();
+        cx.restore();
+      }
     }
   }
 }
@@ -3438,7 +3747,7 @@ function drawRush(b) {
 
 function drawBattle() {
   const b = battle;
-  drawSeaBg();
+  drawBg();
   cx.fillStyle = '#92b4c4'; cx.font = 'bold 9px monospace';
   cx.fillText('W' + S.world + '-' + S.wave + '/' + WAVES_PER_WORLD, 8, 14);
   if (!MP || !MP.p) { // 協力中は右上になかまパネルが出るので BEST は出さない
@@ -3642,7 +3951,7 @@ function drawBattle() {
 }
 
 function drawInter() {
-  drawSeaBg();
+  drawBg();
   cx.textAlign = 'center';
   cx.fillStyle = '#92b4c4'; cx.font = '9px monospace';
   cx.fillText('- DECK & MERCY -', 96, 100);
