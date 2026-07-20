@@ -22,7 +22,15 @@ create table if not exists public.dm_sessions (
   expires_at timestamptz not null
 );
 
+-- ---- せってい (メンテナンスなど) ----
+create table if not exists public.dm_config (
+  k text primary key,
+  v text not null
+);
+
 -- テーブルへの直接アクセスは全部禁止 (RPC関数経由のみ)
+alter table public.dm_config enable row level security;
+revoke all on public.dm_config from anon, authenticated;
 alter table public.dm_accounts enable row level security;
 alter table public.dm_sessions enable row level security;
 revoke all on public.dm_accounts from anon, authenticated;
@@ -44,6 +52,11 @@ begin
   end if;
   if v_acc.banned then
     return jsonb_build_object('ok', false, 'msg', '⚠ このアカウントは ていしされています');
+  end if;
+  if v_acc.username <> 'システム'
+     and coalesce((select v from dm_config where k = 'maint'), '0') = '1' then
+    return jsonb_build_object('ok', false, 'msg', '🛠 ' ||
+      coalesce((select v from dm_config where k = 'maint_msg'), 'メンテナンス中です'));
   end if;
   insert into dm_sessions (account_id, expires_at)
     values (v_acc.id, now() + interval '6 hours')
@@ -95,6 +108,12 @@ begin
   if v_banned then
     delete from dm_sessions where token = p_token;
     return jsonb_build_object('ok', false, 'reason', 'ban');
+  end if;
+  if coalesce((select v from dm_config where k = 'maint'), '0') = '1'
+     and not exists (select 1 from dm_sessions s2 join dm_accounts a2 on a2.id = s2.account_id
+                     where s2.token = p_token and a2.username = 'システム') then
+    return jsonb_build_object('ok', false, 'reason', 'maint',
+      'msg', coalesce((select v from dm_config where k = 'maint_msg'), 'メンテナンス中です'));
   end if;
   update dm_sessions set expires_at = now() + interval '6 hours' where token = p_token;
   return jsonb_build_object('ok', true);
@@ -311,13 +330,13 @@ begin
   if v_meName is distinct from 'システム' then
     return jsonb_build_object('ok', false, 'msg', 'システムアカウント せんようです');
   end if;
-  if p_kind not in ('coins', 'armor', 'orb') then
+  if p_kind not in ('coins', 'armor', 'orb', 'card') then
     return jsonb_build_object('ok', false, 'msg', 'おくれない しゅるい');
   end if;
   if p_kind = 'coins' and coalesce(p_amount, 0) <= 0 then
     return jsonb_build_object('ok', false, 'msg', 'きんがくを いれてね');
   end if;
-  if p_kind in ('armor', 'orb') and coalesce(p_item, '') = '' then
+  if p_kind in ('armor', 'orb', 'card') and coalesce(p_item, '') = '' then
     return jsonb_build_object('ok', false, 'msg', 'なにを おくるか えらんでね');
   end if;
   select id into v_tgt from dm_accounts where username = trim(coalesce(p_name, ''));
@@ -450,6 +469,89 @@ grant execute on function public.dm_market_list(uuid)                        to 
 grant execute on function public.dm_market_sell(uuid, int, int, jsonb, int)  to anon, authenticated;
 grant execute on function public.dm_market_buy(uuid, bigint)                 to anon, authenticated;
 grant execute on function public.dm_market_cancel(uuid, bigint)              to anon, authenticated;
+
+-- ================================================
+-- 管理: プレイヤー一覧 / BAN / メンテナンス
+-- ================================================
+create table if not exists public.dm_config (
+  k text primary key,
+  v text not null
+);
+alter table public.dm_config enable row level security;
+revoke all on public.dm_config from anon, authenticated;
+
+-- 管理者かどうか
+create or replace function public.dm_is_admin_(p_token uuid)
+returns boolean
+language sql security definer set search_path = public, extensions
+as $$
+  select exists (
+    select 1 from dm_sessions s join dm_accounts a on a.id = s.account_id
+    where s.token = p_token and s.expires_at >= now() and a.username = 'システム'
+  );
+$$;
+
+-- プレイヤー一覧 (なまえを えらぶ用)
+create or replace function public.dm_admin_players(p_token uuid)
+returns jsonb
+language plpgsql security definer set search_path = public, extensions
+as $$
+begin
+  if not dm_is_admin_(p_token) then return '[]'::jsonb; end if;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('name', username, 'banned', banned) order by username)
+    from dm_accounts where username <> 'システム'
+  ), '[]'::jsonb);
+end $$;
+
+-- BAN / かいじょ
+create or replace function public.dm_admin_ban(p_token uuid, p_name text, p_ban boolean)
+returns jsonb
+language plpgsql security definer set search_path = public, extensions
+as $$
+declare v_n int;
+begin
+  if not dm_is_admin_(p_token) then return jsonb_build_object('ok', false, 'msg', 'システムアカウント せんよう'); end if;
+  if trim(coalesce(p_name, '')) = 'システム' then return jsonb_build_object('ok', false, 'msg', 'システムは BANできない'); end if;
+  update dm_accounts set banned = coalesce(p_ban, true) where username = trim(coalesce(p_name, ''));
+  get diagnostics v_n = row_count;
+  if v_n = 0 then return jsonb_build_object('ok', false, 'msg', 'そのなまえの ひとは いない'); end if;
+  if coalesce(p_ban, true) then
+    delete from dm_sessions where account_id in (select id from dm_accounts where username = trim(p_name));
+  end if;
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- メンテナンス モード
+create or replace function public.dm_admin_maint(p_token uuid, p_on boolean, p_msg text)
+returns jsonb
+language plpgsql security definer set search_path = public, extensions
+as $$
+begin
+  if not dm_is_admin_(p_token) then return jsonb_build_object('ok', false, 'msg', 'システムアカウント せんよう'); end if;
+  insert into dm_config (k, v) values ('maint', case when coalesce(p_on, false) then '1' else '0' end)
+    on conflict (k) do update set v = excluded.v;
+  insert into dm_config (k, v) values ('maint_msg', coalesce(nullif(trim(coalesce(p_msg, '')), ''), 'メンテナンス中です'))
+    on conflict (k) do update set v = excluded.v;
+  if coalesce(p_on, false) then
+    delete from dm_sessions where account_id in (select id from dm_accounts where username <> 'システム');
+  end if;
+  return jsonb_build_object('ok', true);
+end $$;
+
+create or replace function public.dm_maint_state()
+returns jsonb
+language sql security definer set search_path = public, extensions
+as $$
+  select jsonb_build_object(
+    'on', coalesce((select v from dm_config where k = 'maint'), '0') = '1',
+    'msg', coalesce((select v from dm_config where k = 'maint_msg'), 'メンテナンス中です'));
+$$;
+
+grant execute on function public.dm_admin_players(uuid)               to anon, authenticated;
+grant execute on function public.dm_admin_ban(uuid, text, boolean)    to anon, authenticated;
+grant execute on function public.dm_admin_maint(uuid, boolean, text)  to anon, authenticated;
+grant execute on function public.dm_maint_state()                     to anon, authenticated;
 
 -- ================================================
 -- システムアカウントを つくる (1回だけ 実行)
